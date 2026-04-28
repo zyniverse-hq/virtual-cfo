@@ -855,4 +855,70 @@ describe('ReconciliationService', function () {
                 ->and($match->notes)->toBe('Wrong vendor');
         });
     });
+
+    describe('rejectAllSuggestions', function () {
+        it('rejects a confirmed match and reverts both transactions to unreconciled', function () {
+            $bankTxn = Transaction::factory()->debit(5000)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'reconciliation_status' => ReconciliationStatus::Matched,
+            ]);
+            $invoiceTxn = Transaction::factory()->debit(5000)->create([
+                'imported_file_id' => $this->invoiceFile->id,
+                'reconciliation_status' => ReconciliationStatus::Matched,
+            ]);
+
+            $match = ReconciliationMatch::factory()->confirmed()->create([
+                'bank_transaction_id' => $bankTxn->id,
+                'invoice_transaction_id' => $invoiceTxn->id,
+            ]);
+
+            $count = $this->service->rejectAllSuggestions($bankTxn);
+
+            $match->refresh();
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+
+            expect($count)->toBe(1)
+                ->and($match->status)->toBe(MatchStatus::Rejected)
+                ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('rejects suggested matches without touching transaction status', function () {
+            $bankTxn = Transaction::factory()->debit(5000)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+            $invoiceTxn = Transaction::factory()->debit(5000)->create([
+                'imported_file_id' => $this->invoiceFile->id,
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $match = ReconciliationMatch::factory()->suggested()->create([
+                'bank_transaction_id' => $bankTxn->id,
+                'invoice_transaction_id' => $invoiceTxn->id,
+            ]);
+
+            $count = $this->service->rejectAllSuggestions($bankTxn);
+
+            $match->refresh();
+            $bankTxn->refresh();
+
+            expect($count)->toBe(1)
+                ->and($match->status)->toBe(MatchStatus::Rejected)
+                ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('returns zero and changes nothing when there are no active matches', function () {
+            $bankTxn = Transaction::factory()->debit(5000)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->rejectAllSuggestions($bankTxn);
+
+            expect($count)->toBe(0)
+                ->and($bankTxn->fresh()->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+    });
 });
