@@ -119,7 +119,7 @@ class ReconciliationResource extends Resource
                             ->success()
                             ->send();
                     })
-                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
 
                 Actions\ActionGroup::make([
                     Actions\Action::make('manual_match')
@@ -170,7 +170,7 @@ class ReconciliationResource extends Resource
                                 ->warning()
                                 ->send();
                         })
-                        ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+                        ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
                 ]),
             ])
             ->toolbarActions([
