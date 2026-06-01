@@ -153,62 +153,98 @@ describe('DisplayNameGenerator', function () {
         expect($name)->toBe('HDFC_Millennia_Feb_2025');
     });
 
-    it('generates invoice display name from invoice number, buyer name, and service description', function () {
+    it('generates invoice display name as party name, month, then invoice number', function () {
         $file = ImportedFile::factory()->create([
             'statement_type' => StatementType::Invoice,
         ]);
         Transaction::factory()->create([
             'imported_file_id' => $file->id,
+            'date' => Carbon::parse('2026-04-15'),
             'raw_data' => [
                 'invoice_number' => 'INV/2439',
                 'buyer_name' => 'Test Vendor Pvt Ltd',
-                'line_items' => [
-                    ['description' => 'Office Assistant and Housekeeping charges', 'amount' => 27500.00],
-                ],
             ],
         ]);
 
         $file->load('transactions');
         $name = (new DisplayNameGenerator)->generate($file);
 
-        expect($name)->toBe('INV/2439_Test Vendor_Office Assistant');
+        expect($name)->toBe('Test Vendor_Apr_2026_INV/2439');
     });
 
-    it('strips legal suffixes from buyer name in invoice display name', function () {
+    it('strips legal suffixes from party name in invoice display name', function () {
         $file = ImportedFile::factory()->create([
             'statement_type' => StatementType::Invoice,
         ]);
         Transaction::factory()->create([
             'imported_file_id' => $file->id,
+            'date' => Carbon::parse('2024-07-01'),
             'raw_data' => [
                 'invoice_number' => 'ZY24-0045',
                 'buyer_name' => 'Minds Creative Solutions Private Limited',
-                'line_items' => [
-                    ['description' => 'Website Development Project - Varuna Month - Jul\'24 to Aug\'24', 'amount' => 50000.00],
-                ],
             ],
         ]);
 
         $file->load('transactions');
         $name = (new DisplayNameGenerator)->generate($file);
 
-        expect($name)->toBe('ZY24-0045_Minds Creative Solutions_Website Development');
+        expect($name)->toBe('Minds Creative Solutions_Jul_2024_ZY24-0045');
     });
 
-    it('generates invoice display name with only buyer name when invoice number and line items are missing', function () {
+    it('prefers vendor_name over buyer_name for purchase invoices', function () {
         $file = ImportedFile::factory()->create([
             'statement_type' => StatementType::Invoice,
         ]);
         Transaction::factory()->create([
             'imported_file_id' => $file->id,
+            'date' => Carbon::parse('2026-03-20'),
             'raw_data' => [
-                'buyer_name' => 'Simple Vendor Ltd',
+                'invoice_number' => 'INV/0099',
+                'vendor_name' => 'Reliance Jio Infocomm Limited',
+                'buyer_name' => 'Zysk Technologies',
             ],
         ]);
 
         $file->load('transactions');
         $name = (new DisplayNameGenerator)->generate($file);
 
-        expect($name)->toBe('Simple Vendor');
+        expect($name)->toBe('Reliance Jio Infocomm_Mar_2026_INV/0099');
+    });
+
+    it('omits invoice number segment when invoice_number is absent', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Invoice,
+        ]);
+        Transaction::factory()->create([
+            'imported_file_id' => $file->id,
+            'date' => Carbon::parse('2025-09-05'),
+            'raw_data' => [
+                'vendor_name' => 'Simple Vendor Ltd',
+            ],
+        ]);
+
+        $file->load('transactions');
+        $name = (new DisplayNameGenerator)->generate($file);
+
+        expect($name)->toBe('Simple Vendor_Sep_2025');
+    });
+
+    it('falls back to Invoice_month when no party name is available', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Invoice,
+            'created_at' => Carbon::parse('2025-11-10'),
+        ]);
+        Transaction::factory()->create([
+            'imported_file_id' => $file->id,
+            'date' => Carbon::parse('2025-11-01'),
+            'raw_data' => [
+                'invoice_number' => 'INV/0001',
+            ],
+        ]);
+
+        $file->load('transactions');
+        $name = (new DisplayNameGenerator)->generate($file);
+
+        expect($name)->toBe('Invoice_Nov_2025_INV/0001');
     });
 });
