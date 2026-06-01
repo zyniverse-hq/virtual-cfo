@@ -619,11 +619,16 @@ class DocumentProcessor
     /**
      * Extract the first date substring from a statement period string.
      *
-     * Matches human-readable (DD Mon YYYY), ISO (YYYY-MM-DD), and Indian
-     * slash/dash formats (DD/MM/YYYY, DD-MM-YYYY) in that order.
+     * Matches human-readable (MonthName DD, YYYY; DD Mon YYYY), ISO (YYYY-MM-DD),
+     * and Indian slash/dash formats (DD/MM/YYYY, DD-MM-YYYY) in that order.
      */
     private function extractFirstDateFromPeriod(string $statementPeriod): ?string
     {
+        // MonthName DD, YYYY (e.g. "March 6, 2026") — full English month name, day-after
+        if (preg_match('/[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/', $statementPeriod, $m)) {
+            return $m[0];
+        }
+
         // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
         if (preg_match('/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/', $statementPeriod, $m)) {
             return $m[0];

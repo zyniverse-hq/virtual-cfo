@@ -1235,6 +1235,37 @@ describe('DocumentProcessor', function () {
                 ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
         });
 
+        it('uses statement period start date for Previous Balance transaction when period uses full month name format', function () {
+            Storage::put('statements/cc_prev_bal_fullmonth.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI CC',
+                    'statement_period' => 'March 6, 2026 to April 5, 2026',
+                    'previous_balance' => 8000.00,
+                    'transactions' => [
+                        ['date' => '07 Mar 2026', 'description' => 'AMAZON', 'debit' => 2000],
+                        ['date' => '15 Mar 2026', 'description' => 'SWIGGY', 'debit' => 500],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_fullmonth.pdf',
+                'original_filename' => 'icici_cc_mar26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-03-06');
+        });
+
         it('does not create Previous Balance transaction when previous_balance is zero', function () {
             Storage::put('statements/cc_no_prev_bal.pdf', 'fake-pdf-content');
 
