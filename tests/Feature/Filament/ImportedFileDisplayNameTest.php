@@ -45,7 +45,7 @@ describe('ImportedFile display_name form field', function () {
         expect($imported->display_name)->toBe('My Custom Statement');
     });
 
-    it('auto-generates display_name when left blank', function () {
+    it('leaves display_name null after form submission when user leaves it blank — generation deferred to after processing', function () {
         $file = UploadedFile::fake()->create('statement.pdf', 100, 'application/pdf');
 
         livewire(CreateImportedFile::class)
@@ -57,8 +57,10 @@ describe('ImportedFile display_name form field', function () {
             ->call('create')
             ->assertHasNoFormErrors();
 
+        // Queue::fake() means ProcessImportedFile never runs — display_name must still be null here.
+        // It will be generated with full parsed data (statement_period, card_variant) once the job runs.
         $imported = ImportedFile::first();
-        expect($imported->display_name)->not->toBeNull();
+        expect($imported->display_name)->toBeNull();
     });
 });
 
