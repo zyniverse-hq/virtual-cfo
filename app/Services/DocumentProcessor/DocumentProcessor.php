@@ -586,18 +586,23 @@ class DocumentProcessor
     /**
      * Resolve the date for a Previous Balance synthetic transaction.
      *
-     * Attempts to extract the start date from the statement period string.
+     * Attempts to extract the start date from the statement period string,
+     * supporting ISO, DD/MM/YYYY, DD-MM-YYYY, DD Mon YYYY, and DD-Mon-YYYY formats.
      * Falls back to the earliest transaction date if parsing fails.
      *
      * @param  array<int, array<string, mixed>>  $transactions
      */
     protected function resolvePreviousBalanceDate(?string $statementPeriod, array $transactions): Carbon
     {
-        if ($statementPeriod !== null && preg_match('/(\d{4}-\d{2}-\d{2})/', $statementPeriod, $matches)) {
-            try {
-                return Carbon::parse($matches[1]);
-            } catch (\Throwable) {
-                // fallthrough to transaction date fallback
+        if ($statementPeriod !== null) {
+            $firstDate = $this->extractFirstDateFromPeriod($statementPeriod);
+
+            if ($firstDate !== null) {
+                try {
+                    return $this->parseTransactionDate($firstDate);
+                } catch (\Throwable) {
+                    // fallthrough to transaction date fallback
+                }
             }
         }
 
@@ -609,6 +614,32 @@ class DocumentProcessor
         }
 
         return now();
+    }
+
+    /**
+     * Extract the first date substring from a statement period string.
+     *
+     * Matches human-readable (DD Mon YYYY), ISO (YYYY-MM-DD), and Indian
+     * slash/dash formats (DD/MM/YYYY, DD-MM-YYYY) in that order.
+     */
+    private function extractFirstDateFromPeriod(string $statementPeriod): ?string
+    {
+        // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
+        if (preg_match('/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/', $statementPeriod, $m)) {
+            return $m[0];
+        }
+
+        // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
+        if (preg_match('/\d{4}-\d{2}-\d{2}/', $statementPeriod, $m)) {
+            return $m[0];
+        }
+
+        // DD/MM/YYYY or DD-MM-YYYY (Indian numeric formats)
+        if (preg_match('/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/', $statementPeriod, $m)) {
+            return $m[0];
+        }
+
+        return null;
     }
 
     /**
