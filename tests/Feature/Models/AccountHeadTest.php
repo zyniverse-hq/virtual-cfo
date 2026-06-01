@@ -150,6 +150,46 @@ describe('AccountHead soft-delete cascade', function () {
     });
 });
 
+describe('AccountHead name normalization', function () {
+    it('trims leading and trailing whitespace from name on create', function () {
+        $head = AccountHead::factory()->create(['name' => '  Internet Expense  ']);
+
+        expect($head->fresh()->name)->toBe('Internet Expense');
+    });
+
+    it('strips trailing newline from name on create', function () {
+        $head = AccountHead::factory()->create(['name' => "AMAZON WEB SERVICES INDIA PRIVATE LIMITED\n"]);
+
+        expect($head->fresh()->name)->toBe('AMAZON WEB SERVICES INDIA PRIVATE LIMITED');
+    });
+
+    it('collapses double internal spaces to single space on create', function () {
+        $head = AccountHead::factory()->create(['name' => 'Godaddy India  - Subscription']);
+
+        expect($head->fresh()->name)->toBe('Godaddy India - Subscription');
+    });
+
+    it('normalizes name with mixed whitespace artifacts', function () {
+        $head = AccountHead::factory()->create(['name' => "  AWS  India  \n"]);
+
+        expect($head->fresh()->name)->toBe('AWS India');
+    });
+
+    it('leaves already-clean names unchanged', function () {
+        $head = AccountHead::factory()->create(['name' => 'Internet Expense']);
+
+        expect($head->fresh()->name)->toBe('Internet Expense');
+    });
+
+    it('normalizes name on update too', function () {
+        $head = AccountHead::factory()->create(['name' => 'Internet Expense']);
+
+        $head->update(['name' => "Telecom Expense  \n"]);
+
+        expect($head->fresh()->name)->toBe('Telecom Expense');
+    });
+});
+
 describe('AccountHead relationships', function () {
     it('has children', function () {
         $parent = AccountHead::factory()->create();
