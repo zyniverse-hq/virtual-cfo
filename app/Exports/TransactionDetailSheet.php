@@ -38,10 +38,10 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                 $sheet->getColumnDimension('C')->setWidth(15);
                 $sheet->getColumnDimension('D')->setWidth(15);
                 $sheet->getColumnDimension('E')->setWidth(15);
-                $sheet->getColumnDimension('F')->setWidth(18);
-                $sheet->getColumnDimension('G')->setWidth(12);
-                $sheet->getColumnDimension('H')->setWidth(22);
-                $sheet->getColumnDimension('I')->setWidth(45);
+                $sheet->getColumnDimension('F')->setWidth(45);
+                $sheet->getColumnDimension('G')->setWidth(22);
+                $sheet->getColumnDimension('H')->setWidth(18);
+                $sheet->getColumnDimension('I')->setWidth(12);
 
                 $sheet->setCellValue("A{$totalsRow}", 'Total');
                 $sheet->setCellValue("C{$totalsRow}", "=SUM(C{$dataStartRow}:C{$lastDataRow})");

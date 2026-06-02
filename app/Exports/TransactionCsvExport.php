@@ -79,10 +79,10 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
             'Debit',
             'Credit',
             'Balance',
+            'Description',
+            'Account Head Group',
             'Reference',
             'Currency',
-            'Account Head Group',
-            'Description',
         ];
     }
 
@@ -103,10 +103,10 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
             $row->debit !== null ? (float) $row->debit : null,
             $row->credit !== null ? (float) $row->credit : null,
             $row->balance !== null ? (float) $row->balance : null,
+            $row->description,
+            $accountHead?->group_name,
             $row->reference_number,
             $row->currency,
-            $accountHead?->group_name,
-            $row->description,
         ];
     }
 

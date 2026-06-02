@@ -81,7 +81,7 @@ describe('TransactionCsvExport', function () {
         asUser();
     });
 
-    it('headings use correct column order: Date, Account Head, Debit, Credit, Balance, Reference', function () {
+    it('headings use correct column order: Date, Account Head, Debit, Credit, Balance, Description', function () {
         $export = new TransactionCsvExport;
 
         expect($export->headings())->toBe([
@@ -90,10 +90,10 @@ describe('TransactionCsvExport', function () {
             'Debit',
             'Credit',
             'Balance',
+            'Description',
+            'Account Head Group',
             'Reference',
             'Currency',
-            'Account Head Group',
-            'Description',
         ]);
     });
 
@@ -114,16 +114,16 @@ describe('TransactionCsvExport', function () {
         $export = new TransactionCsvExport;
         $row = $export->map($transaction);
 
-        // Correct order: Date, Account Head, Debit, Credit, Balance, Reference, Currency, Account Head Group, Description
-        expect($row[0])->toBe('15 Mar 2025')          // Date
-            ->and($row[1])->toBe('Office Rent')        // Account Head
-            ->and((float) $row[2])->toBe(5000.50)      // Debit
-            ->and($row[3])->toBeNull()                 // Credit
-            ->and((float) $row[4])->toBe(45000.00)     // Balance
-            ->and($row[5])->toBe('REF123')             // Reference
-            ->and($row[6])->toBe('USD')                // Currency
-            ->and($row[7])->toBe('Indirect Expenses')  // Account Head Group
-            ->and($row[8])->toBe('NEFT-RENT-PAYMENT'); // Description
+        // Correct order: Date, Account Head, Debit, Credit, Balance, Description, Account Head Group, Reference, Currency
+        expect($row[0])->toBe('15 Mar 2025')           // Date
+            ->and($row[1])->toBe('Office Rent')         // Account Head
+            ->and((float) $row[2])->toBe(5000.50)       // Debit
+            ->and($row[3])->toBeNull()                  // Credit
+            ->and((float) $row[4])->toBe(45000.00)      // Balance
+            ->and($row[5])->toBe('NEFT-RENT-PAYMENT')   // Description
+            ->and($row[6])->toBe('Indirect Expenses')   // Account Head Group
+            ->and($row[7])->toBe('REF123')              // Reference
+            ->and($row[8])->toBe('USD');                // Currency
     });
 
     it('row does not include Mapping Type or Bank/Source columns', function () {
