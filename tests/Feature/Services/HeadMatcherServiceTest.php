@@ -383,6 +383,37 @@ describe('HeadMatcherService::resolveAccountHead()', function () {
 
         expect($result)->toBeNull();
     });
+
+    it('name fallback normalizes whitespace in suggested_head_name before querying', function () {
+        $head = AccountHead::factory()->create(['name' => 'Internet Expense']);
+        $service = new HeadMatcherService(new RuleBasedMatcher);
+
+        $method = new ReflectionMethod($service, 'resolveAccountHead');
+
+        // LLM returns the name with a trailing newline — ID is wrong to force the name fallback
+        $result = $method->invoke($service, [
+            'suggested_head_id' => 99999,
+            'suggested_head_name' => "Internet Expense\n",
+        ], $head->company_id);
+
+        expect($result)->not->toBeNull()
+            ->and($result->id)->toBe($head->id);
+    });
+
+    it('name fallback normalizes double internal spaces in suggested_head_name', function () {
+        $head = AccountHead::factory()->create(['name' => 'Godaddy - Subscription']);
+        $service = new HeadMatcherService(new RuleBasedMatcher);
+
+        $method = new ReflectionMethod($service, 'resolveAccountHead');
+
+        $result = $method->invoke($service, [
+            'suggested_head_id' => 99999,
+            'suggested_head_name' => 'Godaddy  - Subscription',
+        ], $head->company_id);
+
+        expect($result)->not->toBeNull()
+            ->and($result->id)->toBe($head->id);
+    });
 });
 
 describe('HeadMatcherService company isolation', function () {

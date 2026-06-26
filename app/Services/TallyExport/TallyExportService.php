@@ -179,7 +179,6 @@ class TallyExportService
         $accountHead = $transaction->accountHead;
         $headName = $accountHead?->name ?? 'Unknown';
         $bankName = $effectiveFile?->bankAccount?->name
-            ?? $effectiveFile?->display_name
             ?? $bankLedgerName
             ?? 'Bank Account';
         $voucherNumber = $this->nextVoucherNumber('Journal');
@@ -533,6 +532,14 @@ class TallyExportService
      * Generate the two-leg journal entry for a bank/CC transaction.
      * BY (debit, ISDEEMEDPOSITIVE=Yes): account head mapped by the user.
      * TO (credit, ISDEEMEDPOSITIVE=No): bank/CC card ledger name.
+     *
+     * Design note (see #261 → #262): reconciled CC transactions always use the
+     * account head as the debit ledger, not vendor_name from raw_data. This is
+     * intentional — the CC statement export is treated as a standalone single-entry
+     * journal (expense → CC account). Invoices are exported independently via their
+     * own Journal/All Masters export, which handles the vendor payable leg. Exporting
+     * both an invoice AND its matched CC payment with vendor_name as debit would
+     * double-debit the expense head.
      */
     private function generateBankJournalLedgerEntries(string $headName, string $bankName, float $amount, bool $isDebit): string
     {
