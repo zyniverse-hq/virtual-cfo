@@ -75,11 +75,11 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
     {
         return [
             'Date',
-            'Reference',
             'Account Head',
             'Debit',
             'Credit',
             'Balance',
+            'Reference',
             'Currency',
             'Account Head Group',
             'Description',
@@ -99,11 +99,11 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
 
         return [
             $date->format('d M Y'),
-            $row->reference_number,
             $accountHead?->name,
             $row->debit !== null ? (float) $row->debit : null,
             $row->credit !== null ? (float) $row->credit : null,
             $row->balance !== null ? (float) $row->balance : null,
+            $row->reference_number,
             $row->currency,
             $accountHead?->group_name,
             $row->description,
