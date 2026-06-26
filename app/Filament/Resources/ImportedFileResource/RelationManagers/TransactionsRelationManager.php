@@ -27,11 +27,13 @@ use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Support\Exceptions\Halt;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
@@ -178,14 +180,24 @@ class TransactionsRelationManager extends RelationManager
                             /** @var Company|null $tenant */
                             $tenant = Filament::getTenant();
 
-                            HeadMapping::create([
-                                'pattern' => $data['pattern'],
-                                'match_type' => $data['match_type'],
-                                'account_head_id' => $data['account_head_id'],
-                                'bank_name' => $data['bank_name'] ?: null,
-                                'company_id' => $tenant?->id,
-                                'created_by' => Auth::id(),
-                            ]);
+                            try {
+                                HeadMapping::create([
+                                    'pattern' => $data['pattern'],
+                                    'match_type' => $data['match_type'],
+                                    'account_head_id' => $data['account_head_id'],
+                                    'bank_name' => $data['bank_name'] ?: null,
+                                    'company_id' => $tenant?->id,
+                                    'created_by' => Auth::id(),
+                                ]);
+                            } catch (UniqueConstraintViolationException) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Duplicate rule')
+                                    ->body('A mapping rule with this pattern, match type, and account head already exists.')
+                                    ->send();
+
+                                throw new Halt;
+                            }
 
                             Notification::make()
                                 ->title('Mapping rule created')
