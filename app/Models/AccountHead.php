@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Services\AggregateService;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,30 +17,6 @@ class AccountHead extends Model
     use LogsActivity;
     use SoftDeletes;
 
-    protected static function booted(): void
-    {
-        static::deleting(function (AccountHead $head) {
-            if (! $head->isForceDeleting()) {
-                $yearMonths = Transaction::where('account_head_id', $head->id)
-                    ->distinct()
-                    ->selectRaw("TO_CHAR(date, 'YYYY-MM') AS year_month")
-                    ->pluck('year_month');
-
-                if ($yearMonths->isEmpty()) {
-                    return;
-                }
-
-                Transaction::withoutEvents(function () use ($head) {
-                    $head->transactions()->update(['account_head_id' => null]);
-                });
-
-                $service = app(AggregateService::class);
-                foreach ($yearMonths as $yearMonth) {
-                    $service->rebuild($head->company_id, $yearMonth);
-                }
-            }
-        });
-    }
 
     protected $fillable = [
         'company_id',

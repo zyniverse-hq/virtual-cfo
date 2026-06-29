@@ -82,73 +82,7 @@ describe('AccountHead::fullPath', function () {
     });
 });
 
-describe('AccountHead soft-delete cascade', function () {
-    beforeEach(function () {
-        asUser();
-    });
 
-    it('nulls account_head_id on mapped transactions when soft-deleted', function () {
-        $head = AccountHead::factory()->create();
-        $txn = Transaction::factory()->mapped($head)->create();
-
-        $head->delete();
-
-        expect($txn->fresh()->account_head_id)->toBeNull();
-    });
-
-    it('updates TransactionAggregate when soft-deleting an account head', function () {
-        $company = tenant();
-        $head = AccountHead::factory()->create(['company_id' => $company->id]);
-
-        Transaction::factory()->mapped($head)->debit(5000)->create([
-            'company_id' => $company->id,
-            'date' => '2025-04-15',
-        ]);
-
-        // Aggregate should have the head assigned
-        expect(TransactionAggregate::where('company_id', $company->id)
-            ->where('account_head_id', $head->id)
-            ->exists()
-        )->toBeTrue();
-
-        $head->delete();
-
-        // Aggregate should now be under null head
-        expect(TransactionAggregate::where('company_id', $company->id)
-            ->where('account_head_id', $head->id)
-            ->exists()
-        )->toBeFalse()
-            ->and(TransactionAggregate::where('company_id', $company->id)
-                ->whereNull('account_head_id')
-                ->exists()
-            )->toBeTrue();
-    });
-
-    it('does not re-map transactions when an account head is restored', function () {
-        $head = AccountHead::factory()->create();
-        $txn = Transaction::factory()->mapped($head)->create();
-
-        $head->delete();
-
-        // After soft-delete: transaction is unmapped
-        expect($txn->fresh()->account_head_id)->toBeNull();
-
-        $head->restore();
-
-        // After restore: transaction remains unmapped
-        expect($txn->fresh()->account_head_id)->toBeNull();
-    });
-
-    it('does not null transactions when force-deleted (DB cascade handles it)', function () {
-        $head = AccountHead::factory()->create();
-        $txn = Transaction::factory()->mapped($head)->create();
-
-        $head->forceDelete();
-
-        // DB nullOnDelete fires — transaction's account_head_id is nulled by PostgreSQL
-        expect($txn->fresh()->account_head_id)->toBeNull();
-    });
-});
 
 describe('AccountHead relationships', function () {
     it('has children', function () {

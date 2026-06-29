@@ -135,8 +135,48 @@ class AccountHeadResource extends Resource
             ])
             ->actions([
                 Actions\EditAction::make(),
-                Actions\DeleteAction::make(),
-                Actions\ForceDeleteAction::make(),
+                Actions\DeleteAction::make()
+                    ->before(function (AccountHead $record, Actions\DeleteAction $action) {
+                        $count = $record->transactions()->count();
+                        if ($count > 0) {
+                            Notification::make()
+                                ->danger()
+                                ->title("Cannot delete — {$count} transactions are mapped to this head. Reassign them first.")
+                                ->actions([
+                                    \Filament\Actions\Action::make('view_transactions')
+                                        ->label('View Transactions')
+                                        ->url(\App\Filament\Resources\TransactionResource::getUrl('index', [
+                                            'tableFilters' => [
+                                                'account_head_id' => ['value' => $record->id],
+                                            ],
+                                        ]))
+                                        ->button(),
+                                ])
+                                ->send();
+                            $action->cancel();
+                        }
+                    }),
+                Actions\ForceDeleteAction::make()
+                    ->before(function (AccountHead $record, Actions\ForceDeleteAction $action) {
+                        $count = $record->transactions()->count();
+                        if ($count > 0) {
+                            Notification::make()
+                                ->danger()
+                                ->title("Cannot delete — {$count} transactions are mapped to this head. Reassign them first.")
+                                ->actions([
+                                    \Filament\Actions\Action::make('view_transactions')
+                                        ->label('View Transactions')
+                                        ->url(\App\Filament\Resources\TransactionResource::getUrl('index', [
+                                            'tableFilters' => [
+                                                'account_head_id' => ['value' => $record->id],
+                                            ],
+                                        ]))
+                                        ->button(),
+                                ])
+                                ->send();
+                            $action->cancel();
+                        }
+                    }),
                 Actions\RestoreAction::make(),
             ])
             ->bulkActions([
