@@ -119,7 +119,22 @@ class ReconciliationResource extends Resource
                             ->success()
                             ->send();
                     })
-                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
+
+                Actions\Action::make('reject_suggestions')
+                    ->label('Reject All')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->action(function (Transaction $record) {
+                        app(ReconciliationService::class)->rejectAllSuggestions($record);
+
+                        Notification::make()
+                            ->title('All suggestions rejected')
+                            ->warning()
+                            ->send();
+                    })
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
 
                 Actions\ActionGroup::make([
                     Actions\Action::make('manual_match')
@@ -156,21 +171,6 @@ class ReconciliationResource extends Resource
                                 ->send();
                         })
                         ->visible(fn (Transaction $record) => $record->reconciliation_status !== ReconciliationStatus::Matched),
-
-                    Actions\Action::make('reject_suggestions')
-                        ->label('Reject All')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->action(function (Transaction $record) {
-                            app(ReconciliationService::class)->rejectAllSuggestions($record);
-
-                            Notification::make()
-                                ->title('All suggestions rejected')
-                                ->warning()
-                                ->send();
-                        })
-                        ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
                 ]),
             ])
             ->toolbarActions([
