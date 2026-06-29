@@ -70,9 +70,10 @@ class ReconciliationResource extends Resource
 
                 Tables\Columns\TextColumn::make('description')
                     ->label('Description')
-                    ->limit(40)
+                    ->limit(30)
                     ->tooltip(fn (Transaction $record): string => $record->description)
                     ->searchable()
+                    ->wrap()
                     ->description(function (Transaction $record): ?string {
                         $invoiceTxn = $record->reconciliationMatchesAsBank->first()?->invoiceTransaction;
 
@@ -109,6 +110,8 @@ class ReconciliationResource extends Resource
                     ->label('Confirm')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
+                    ->button()
+                    ->size('sm')
                     ->action(function (Transaction $record) {
                         $match = $record->reconciliationMatchesAsBank()->suggested()->firstOrFail();
 
@@ -117,6 +120,23 @@ class ReconciliationResource extends Resource
                         Notification::make()
                             ->title('Suggestion confirmed')
                             ->success()
+                            ->send();
+                    })
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+
+                Actions\Action::make('reject_suggestions')
+                    ->label('Reject')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->button()
+                    ->size('sm')
+                    ->requiresConfirmation()
+                    ->action(function (Transaction $record) {
+                        app(ReconciliationService::class)->rejectAllSuggestions($record);
+
+                        Notification::make()
+                            ->title('All suggestions rejected')
+                            ->warning()
                             ->send();
                     })
                     ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
@@ -156,21 +176,6 @@ class ReconciliationResource extends Resource
                                 ->send();
                         })
                         ->visible(fn (Transaction $record) => $record->reconciliation_status !== ReconciliationStatus::Matched),
-
-                    Actions\Action::make('reject_suggestions')
-                        ->label('Reject All')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->action(function (Transaction $record) {
-                            app(ReconciliationService::class)->rejectAllSuggestions($record);
-
-                            Notification::make()
-                                ->title('All suggestions rejected')
-                                ->warning()
-                                ->send();
-                        })
-                        ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
                 ]),
             ])
             ->toolbarActions([
