@@ -424,8 +424,13 @@ class DocumentProcessor
     {
         $filePath ??= $file->file_path;
 
+        $prompt = 'Parse all transactions from this bank statement. Extract every single transaction row. ' .
+            'Additionally, extract the FULL card variant, including any co-branded partner AND premium tier name together (e.g., "Paytm HDFC Bank Credit Card", "Amazon Pay", "Flipkart", "Swiggy", "Magnus", "Regalia", "Platinum", "Rubyx") as `card_variant`. ' .
+            'Pay VERY close attention to the header: if it says something like "Paytm HDFC Bank Credit Card", the variant is "Paytm". Co-brand names like Paytm and Amazon are NOT advertisements, they are the actual product name. ' .
+            'Set `card_variant` to `null` if the document is a bank account statement or if the specific card variant cannot be definitively identified.';
+
         $response = StatementParser::make()->prompt(
-            'Parse all transactions from this bank statement. Extract every single transaction row.',
+            $prompt,
             attachments: [Document::fromStorage($filePath, disk: 'local')],
         );
 

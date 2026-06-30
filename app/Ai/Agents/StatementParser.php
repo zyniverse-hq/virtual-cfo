@@ -59,7 +59,7 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
 
         For credit card statements, also extract:
         - The Previous Balance (opening balance) from the Statement Summary section. This is labelled "Previous Balance", "Opening Balance", or similar — it is NOT a transaction row. Set it as `previous_balance` in the response.
-        - The card variant or product name (e.g. "Regalia", "Millennia", "Platinum", "Infinia", "SimplyCLICK"). This appears on the statement header or card face area. Set it as `card_variant`. Leave null for bank account statements.
+        - For credit card statements, extract the FULL card variant, including any co-branded partner AND premium tier name together (e.g., "Paytm HDFC Bank Credit Card", "Amazon Pay", "Flipkart", "Swiggy", "Magnus", "Regalia", "Platinum", "Rubyx") as card_variant. Pay VERY close attention to the header: if it says something like "Paytm HDFC Bank Credit Card", the variant is "Paytm". Co-brand names like Paytm and Amazon are NOT advertisements, they are the actual product name. Set card_variant to null if the document is a bank account statement or if the specific card variant cannot be definitively identified.
 
         For bank statements, also extract:
         - The opening balance (labelled "Opening Balance", "Balance B/F", or similar) from the statement header or first row. Set it as `previous_balance`. Leave null if not present.
