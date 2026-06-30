@@ -543,13 +543,36 @@ class ReconciliationService
     }
 
     /**
-     * Reject all pending suggestions for a bank transaction.
+     * Reject all pending suggestions and confirmed matches for a bank transaction.
      */
     public function rejectAllSuggestions(Transaction $bankTxn): int
     {
-        return $bankTxn->reconciliationMatchesAsBank()
-            ->suggested()
-            ->update(['status' => MatchStatus::Rejected]);
+        return DB::transaction(function () use ($bankTxn) {
+            $suggestedUpdated = $bankTxn->reconciliationMatchesAsBank()
+                ->suggested()
+                ->update(['status' => MatchStatus::Rejected]);
+
+            $confirmedMatches = $bankTxn->reconciliationMatchesAsBank()
+                ->confirmed()
+                ->with(['bankTransaction', 'invoiceTransaction'])
+                ->get();
+
+            $confirmedUpdated = $confirmedMatches->count();
+
+            foreach ($confirmedMatches as $match) {
+                $match->update(['status' => MatchStatus::Rejected]);
+
+                if ($match->bankTransaction) {
+                    $match->bankTransaction->update(['reconciliation_status' => ReconciliationStatus::Unreconciled]);
+                }
+
+                if ($match->invoiceTransaction) {
+                    $match->invoiceTransaction->update(['reconciliation_status' => ReconciliationStatus::Unreconciled]);
+                }
+            }
+
+            return $suggestedUpdated + $confirmedUpdated;
+        });
     }
 
     /**
