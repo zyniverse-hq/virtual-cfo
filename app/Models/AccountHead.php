@@ -27,6 +27,17 @@ class AccountHead extends Model
         'is_active',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleting(function (AccountHead $head) {
+            if ($head->transactions()->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'base' => 'Cannot delete account head because it has transactions mapped to it. Reassign them first.',
+                ]);
+            }
+        });
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()

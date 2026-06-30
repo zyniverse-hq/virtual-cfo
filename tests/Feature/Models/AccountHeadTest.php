@@ -57,6 +57,22 @@ describe('AccountHead soft deletes', function () {
 
         expect($newHead->exists)->toBeTrue();
     });
+
+    it('throws exception when deleting if transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->create(['account_head_id' => $head->id]);
+
+        expect(fn () => $head->delete())
+            ->toThrow(\Illuminate\Validation\ValidationException::class);
+    });
+
+    it('throws exception when force deleting if transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->create(['account_head_id' => $head->id]);
+
+        expect(fn () => $head->forceDelete())
+            ->toThrow(\Illuminate\Validation\ValidationException::class);
+    });
 });
 
 describe('AccountHead::fullPath', function () {

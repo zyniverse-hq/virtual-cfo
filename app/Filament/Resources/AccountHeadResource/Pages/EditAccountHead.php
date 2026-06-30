@@ -13,8 +13,14 @@ class EditAccountHead extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
-            Actions\ForceDeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->before(function (\App\Models\AccountHead $record, Actions\DeleteAction $action) {
+                    AccountHeadResource::validateDeletion($record, $action);
+                }),
+            Actions\ForceDeleteAction::make()
+                ->before(function (\App\Models\AccountHead $record, Actions\ForceDeleteAction $action) {
+                    AccountHeadResource::validateDeletion($record, $action);
+                }),
             Actions\RestoreAction::make(),
         ];
     }
