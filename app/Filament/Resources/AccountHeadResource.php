@@ -141,7 +141,7 @@ class AccountHeadResource extends Resource
                         if ($count > 0) {
                             Notification::make()
                                 ->danger()
-                                ->title("Cannot delete — {$count} transactions are mapped to this head. Reassign them first.")
+                                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is" : "{$count} transactions are") . " mapped to this head. Reassign them first.")
                                 ->actions([
                                     \Filament\Actions\Action::make('view_transactions')
                                         ->label('View Transactions')
@@ -162,7 +162,7 @@ class AccountHeadResource extends Resource
                         if ($count > 0) {
                             Notification::make()
                                 ->danger()
-                                ->title("Cannot delete — {$count} transactions are mapped to this head. Reassign them first.")
+                                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is" : "{$count} transactions are") . " mapped to this head. Reassign them first.")
                                 ->actions([
                                     \Filament\Actions\Action::make('view_transactions')
                                         ->label('View Transactions')
