@@ -215,4 +215,66 @@ describe('AccountHeadResource', function () {
 
         expect(AccountHead::where('name', 'Bank Charges')->count())->toBe(1);
     });
+
+    it('blocks deletion of account head when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        \App\Models\Transaction::factory()->mapped($head)->count(3)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head)
+            ->assertSuccessful()
+            ->assertNotified('Cannot delete — 3 transactions are mapped to this head. Reassign them first.');
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
+
+    it('blocks force deletion of account head when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        $head->delete(); // Needs to be soft-deleted to run forceDelete action in most Filament setups
+        \App\Models\Transaction::factory()->mapped($head)->count(2)->create();
+
+        livewire(ListAccountHeads::class)
+            ->filterTable('trashed', true)
+            ->callTableAction('forceDelete', $head)
+            ->assertSuccessful()
+            ->assertNotified('Cannot delete — 2 transactions are mapped to this head. Reassign them first.');
+
+        expect(AccountHead::withTrashed()->find($head->id))->not->toBeNull();
+    });
+
+    it('blocks deletion of account head with singular grammar when 1 transaction is mapped', function () {
+        $head = AccountHead::factory()->create();
+        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head)
+            ->assertSuccessful()
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
+
+    it('blocks bulk deletion of account heads when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+        $head2 = AccountHead::factory()->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableBulkAction('delete', [$head, $head2])
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+        expect(AccountHead::find($head2->id))->not->toBeNull();
+    });
+
+    it('blocks deletion of account head from the edit page when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+
+        livewire(EditAccountHead::class, ['record' => $head->getRouteKey()])
+            ->callAction('delete')
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
 });

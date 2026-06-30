@@ -135,14 +135,30 @@ class AccountHeadResource extends Resource
             ])
             ->actions([
                 Actions\EditAction::make(),
-                Actions\DeleteAction::make(),
-                Actions\ForceDeleteAction::make(),
+                Actions\DeleteAction::make()
+                    ->before(function (AccountHead $record, Actions\DeleteAction $action) {
+                        self::validateDeletion($record, $action);
+                    }),
+                Actions\ForceDeleteAction::make()
+                    ->before(function (AccountHead $record, Actions\ForceDeleteAction $action) {
+                        self::validateDeletion($record, $action);
+                    }),
                 Actions\RestoreAction::make(),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
-                    Actions\ForceDeleteBulkAction::make(),
+                    Actions\DeleteBulkAction::make()
+                        ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\DeleteBulkAction $action) {
+                            foreach ($records as $record) {
+                                self::validateDeletion($record, $action);
+                            }
+                        }),
+                    Actions\ForceDeleteBulkAction::make()
+                        ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\ForceDeleteBulkAction $action) {
+                            foreach ($records as $record) {
+                                self::validateDeletion($record, $action);
+                            }
+                        }),
                     Actions\RestoreBulkAction::make(),
                 ]),
             ])
@@ -243,5 +259,28 @@ class AccountHeadResource extends Resource
             ->icon('heroicon-o-arrow-up-tray')
             ->form(self::tallyImportForm())
             ->action(self::tallyImportAction());
+    }
+
+    public static function validateDeletion(AccountHead $record, $action): void
+    {
+        $count = $record->transactions()->count();
+        if ($count > 0) {
+            Notification::make()
+                ->danger()
+                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is" : "{$count} transactions are") . " mapped to this head. Reassign them first.")
+                ->actions([
+                    \Filament\Actions\Action::make('view_transactions')
+                        ->label('View Transactions')
+                        ->url(\App\Filament\Resources\TransactionResource::getUrl('index', [
+                            'tableFilters' => [
+                                'account_head_id' => ['value' => $record->id],
+                            ],
+                        ]))
+                        ->button(),
+                ])
+                ->send();
+
+            $action->cancel();
+        }
     }
 }
