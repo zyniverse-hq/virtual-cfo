@@ -42,16 +42,8 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
             return '';
         }
 
-        $file = $this->importedFile;
-        $bankName = $file->bank_name ?? '';
-
-        if ($file->credit_card_id) {
-            $file->loadMissing('creditCard');
-            $cardName = $file->creditCard?->name;
-            $bankName = $cardName ? trim("{$bankName} {$cardName}") : $bankName;
-        }
-
-        $holderName = $file->account_holder_name;
+        $bankName = $this->importedFile->getFullBankOrCardName();
+        $holderName = $this->importedFile->account_holder_name;
 
         return $holderName ? "{$bankName} — {$holderName}" : $bankName;
     }
@@ -149,7 +141,7 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 $totalsRow = $lastDataRow + 1;
 
                 if ($hasMetadata) {
-                    $sheet->setCellValue('A1', 'Card / Account:');
+                    $sheet->setCellValue('A1', $this->importedFile->getExportAccountTitle());
                     $sheet->setCellValue('B1', $this->resolveAccountLabel());
                     $sheet->setCellValue('A2', 'Statement Period:');
                     $sheet->setCellValue('B2', $this->importedFile->statement_period ?? '');

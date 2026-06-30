@@ -174,7 +174,7 @@ describe('TransactionCsvExport', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $sheet = $spreadsheet->getActiveSheet();
 
-        expect($sheet->getCell('A1')->getValue())->toBe('Bank:')
+        expect($sheet->getCell('A1')->getValue())->toBe('Account:')
             ->and($sheet->getCell('B1')->getValue())->toBe('HDFC Bank')
             ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($sheet->getCell('B2')->getValue())->toBe('Zysk Technologies')
@@ -277,7 +277,7 @@ describe('TransactionDetailSheet', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $ws = $spreadsheet->getSheetByName('Transactions');
 
-        expect($ws->getCell('A1')->getValue())->toBe('Bank:')
+        expect($ws->getCell('A1')->getValue())->toBe('Account:')
             ->and($ws->getCell('B1')->getValue())->toBe('ICICI Bank')
             ->and($ws->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($ws->getCell('B2')->getValue())->toBe('Rahul Sharma')
