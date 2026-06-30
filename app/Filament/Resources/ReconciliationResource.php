@@ -125,7 +125,7 @@ class ReconciliationResource extends Resource
                     ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
 
                 Actions\Action::make('reject_suggestions')
-                    ->label('Reject')
+                    ->label('Reject All')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->button()
