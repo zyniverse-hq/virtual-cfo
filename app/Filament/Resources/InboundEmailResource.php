@@ -110,8 +110,8 @@ class InboundEmailResource extends Resource
                     }),
             ])
             ->actions([
-                \Filament\Actions\ActionGroup::make([
-                    \Filament\Actions\ViewAction::make(),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\ViewAction::make(),
                 ])->icon('heroicon-m-ellipsis-vertical'),
             ])
             ->recordUrl(fn (InboundEmail $record): string => static::getUrl('view', ['record' => $record]));
