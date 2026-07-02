@@ -2,6 +2,7 @@
 
 use App\Enums\StatementType;
 use App\Models\ImportedFile;
+use App\Models\Transaction;
 use App\Services\DisplayNameGenerator;
 
 it('generates a clean display name with all metadata present', function () {
@@ -51,4 +52,29 @@ it('handles missing card variant correctly', function () {
     $displayName = $generator->generate($file);
 
     expect($displayName)->toBe('SBI Aug 2025');
+});
+
+it('generates invoice display name from transaction data', function () {
+    $file = new ImportedFile;
+    $file->forceFill([
+        'statement_type' => StatementType::Invoice,
+    ]);
+
+    $transaction = new Transaction;
+    $transaction->forceFill([
+        'raw_data' => [
+            'invoice_number' => 'INV-100',
+            'vendor_name' => 'Acme Corp Pvt Ltd',
+            'line_items' => [
+                ['description' => 'Software License for 1 year']
+            ]
+        ],
+    ]);
+
+    $file->setRelation('transactions', collect([$transaction]));
+
+    $generator = new DisplayNameGenerator;
+    $displayName = $generator->generate($file);
+
+    expect($displayName)->toBe('INV-100 Acme Corp Software License');
 });
