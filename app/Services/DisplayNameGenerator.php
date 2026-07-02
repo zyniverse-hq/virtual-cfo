@@ -16,13 +16,13 @@ class DisplayNameGenerator
         }
 
         $period = $this->resolvePeriod($file);
+
+        $bankName = $file->bank_name ?? $file->bankAccount?->name;
         $variant = $file->card_variant ?? $file->creditCard?->name;
 
-        if ($variant) {
-            return "{$file->bank_name}_{$variant}_{$period}";
-        }
+        $parts = array_filter([$bankName, $variant, $period]);
 
-        return "{$file->bank_name}_{$period}";
+        return implode(' ', $parts);
     }
 
     private function generateInvoiceName(ImportedFile $file): string
@@ -45,7 +45,7 @@ class DisplayNameGenerator
             return $file->bank_name ?? 'Invoice';
         }
 
-        return implode('_', $parts);
+        return implode(' ', $parts);
     }
 
     private function stripCompanySuffix(?string $name): ?string
@@ -72,7 +72,7 @@ class DisplayNameGenerator
     private function resolvePeriod(ImportedFile $file): string
     {
         if (! $file->statement_period) {
-            return $file->created_at->format('M_Y');
+            return $file->created_at->format('M Y');
         }
 
         return $this->extractEndMonth($file->statement_period);
@@ -85,7 +85,7 @@ class DisplayNameGenerator
             : $period;
 
         try {
-            return Carbon::parse($dateToParse)->format('M_Y');
+            return Carbon::parse($dateToParse)->format('M Y');
         } catch (\Exception) {
             return $period;
         }
