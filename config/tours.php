@@ -33,12 +33,12 @@ return [
         [
             'title' => 'Upload a Statement',
             'description' => 'Click "Upload Statement" to add a new file. Select the statement type and bank account, then upload. Processing starts immediately.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-upload-statement',
         ],
         [
             'title' => 'Track Processing Status',
             'description' => 'The Status column shows: Pending → Processing → Completed (or Failed). If a PDF is password-protected, you will see "Needs Password" — click the row actions to set it.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-status',
         ],
         [
             'title' => 'Row Actions',
@@ -61,17 +61,17 @@ return [
         [
             'title' => 'Mapping Stats',
             'description' => 'Total transactions, how many are unmapped (your to-do), and your mapped percentage. Green means 80%+ mapped — you are ready to export.',
-            'element' => '.fi-wi-stats-overview',
+            'element' => '.tour-mapping-stats',
         ],
         [
             'title' => 'AI Matching',
             'description' => 'Click "Run AI Matching" to auto-map unmapped transactions using AI. It suggests account heads with confidence scores. High-confidence matches are assigned automatically.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-ai-matching',
         ],
         [
             'title' => 'Assign Heads & Create Rules',
             'description' => 'Click any row\'s "Assign Head" to manually map it. Use "Create Rule" to make a reusable pattern — next time a similar transaction appears, it maps automatically.',
-            'element' => '.fi-ta',
+            'element' => '.tour-assign-head',
         ],
         [
             'title' => 'Bulk Actions',
@@ -81,12 +81,12 @@ return [
         [
             'title' => 'Export to Tally',
             'description' => 'When mapping is complete, use the Export menu (Tally XML, CSV, or Excel). Set a date range to export a specific period. The Tally XML is ready to import directly.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-export-tally',
         ],
         [
             'title' => 'Filters',
             'description' => 'Filter by imported file, mapping type, account head, date range, or unmapped-only. The "Unmapped Only" filter is your fastest path to clearing the backlog.',
-            'element' => '.fi-ta-header-toolbar',
+            'element' => '.tour-filters-button',
         ],
     ],
 
@@ -99,17 +99,17 @@ return [
         [
             'title' => 'Import from Tally XML',
             'description' => 'The fastest way to set up: click "Import from Tally XML" and upload your Tally master file. It creates all heads, groups, and hierarchy automatically. It also detects bank accounts.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-import-tally',
         ],
         [
             'title' => 'Usage Counts',
             'description' => 'The "Transactions" column shows how many transactions are mapped to each head. "Rules" shows how many auto-mapping rules target it. Heads with zero usage may be unused.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-transactions-count',
         ],
         [
             'title' => 'Active Toggle',
             'description' => 'Inactive heads are hidden from mapping suggestions, keeping your dropdowns clean. Deactivate heads you do not use instead of deleting them.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-is-active',
         ],
     ],
 
@@ -122,22 +122,22 @@ return [
         [
             'title' => 'Create Rules',
             'description' => 'Click "New" to create a rule manually, or go to Transactions → click a row → "Create Rule" to pre-fill from an existing transaction. The second approach is faster.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-create-rule',
         ],
         [
             'title' => 'Test Before Applying',
             'description' => 'Each rule has a "Test Rule" action in the row menu. It shows how many existing transactions would match — use it to verify your pattern before relying on it.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-actions:first-of-type',
         ],
         [
             'title' => 'Match Types',
             'description' => 'Contains: matches if description includes the text. Exact: must match fully. Regex: for advanced patterns (e.g., "NEFT.*SALARY"). Contains covers 90% of cases.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-match-type',
         ],
         [
             'title' => 'Priority & Usage',
             'description' => 'Rules with lower priority numbers run first. The "Uses" column shows how often a rule matched — high-use rules are your most valuable automation.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-priority',
         ],
     ],
 
@@ -155,12 +155,12 @@ return [
         [
             'title' => 'Run Reconciliation',
             'description' => 'Click "Run Reconciliation" and select a bank statement + invoice file. The system matches transactions by amount and date, then suggests possible matches.',
-            'element' => '.fi-header-actions',
+            'element' => '.tour-run-reconciliation',
         ],
         [
             'title' => 'Review Matches',
             'description' => 'Green "Confirm" buttons appear on rows with suggestions. Click to accept. Use "Match Invoice" to manually link a transaction. "Reject All" clears bad suggestions.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-actions:first-of-type',
         ],
     ],
 ];
