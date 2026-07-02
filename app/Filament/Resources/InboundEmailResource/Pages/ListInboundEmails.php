@@ -7,23 +7,19 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListInboundEmails extends ListRecords
 {
+    use \App\Filament\Concerns\HasPageTour;
+
     protected static string $resource = InboundEmailResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
-            \Filament\Actions\Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
     public function getFooter(): ?\Illuminate\Contracts\View\View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'inbound-emails']);
+        return $this->getPageTourFooter('inbound-emails');
     }
 }

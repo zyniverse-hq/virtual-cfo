@@ -27,6 +27,7 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
+    use \App\Filament\Concerns\HasPageTour;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
@@ -41,19 +42,13 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
     protected function getHeaderActions(): array
     {
         return [
-            \Filament\Actions\Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
     public function getFooter(): ?\Illuminate\Contracts\View\View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'review-queue']);
+        return $this->getPageTourFooter('review-queue');
     }
 
     public function table(Table $table): Table
