@@ -166,10 +166,14 @@ class TransactionResource extends Resource
                         false: fn (Builder $query) => $query->where('mapping_type', '!=', MappingType::Unmapped),
                     ),
             ])
+            ->filtersTriggerAction(
+                fn ($action) => $action->extraAttributes(['class' => 'tour-filters-button'])
+            )
             ->actions([
                 Action::make('assign_head')
                     ->label('Assign Head')
                     ->icon('heroicon-o-tag')
+                    ->extraAttributes(['class' => 'tour-assign-head'])
                     ->form([
                         Forms\Components\Select::make('account_head_id')
                             ->label('Account Head')
@@ -406,6 +410,7 @@ class TransactionResource extends Resource
                     ->label('Run AI Matching')
                     ->icon('heroicon-o-cpu-chip')
                     ->color('warning')
+                    ->extraAttributes(['class' => 'tour-ai-matching'])
                     ->requiresConfirmation()
                     ->modalDescription('This will run rule-based and AI matching on all unmapped transactions across all files.')
                     ->action(function () {
@@ -512,6 +517,7 @@ class TransactionResource extends Resource
                     ->label('Export')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('success')
+                    ->extraAttributes(['class' => 'tour-export-tally'])
                     ->button(),
             ])
             ->emptyStateHeading('No transactions yet')
