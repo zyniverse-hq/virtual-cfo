@@ -38,7 +38,7 @@ return [
         [
             'title' => 'Track Processing Status',
             'description' => 'The Status column shows: Pending → Processing → Completed (or Failed). If a PDF is password-protected, you will see "Needs Password" — click the row actions to set it.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-status',
         ],
         [
             'title' => 'Row Actions',
@@ -71,7 +71,7 @@ return [
         [
             'title' => 'Assign Heads & Create Rules',
             'description' => 'Click any row\'s "Assign Head" to manually map it. Use "Create Rule" to make a reusable pattern — next time a similar transaction appears, it maps automatically.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-accountHead-name',
         ],
         [
             'title' => 'Bulk Actions',
@@ -104,12 +104,12 @@ return [
         [
             'title' => 'Usage Counts',
             'description' => 'The "Transactions" column shows how many transactions are mapped to each head. "Rules" shows how many auto-mapping rules target it. Heads with zero usage may be unused.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-transactions-count',
         ],
         [
             'title' => 'Active Toggle',
             'description' => 'Inactive heads are hidden from mapping suggestions, keeping your dropdowns clean. Deactivate heads you do not use instead of deleting them.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-is-active',
         ],
     ],
 
@@ -127,17 +127,17 @@ return [
         [
             'title' => 'Test Before Applying',
             'description' => 'Each rule has a "Test Rule" action in the row menu. It shows how many existing transactions would match — use it to verify your pattern before relying on it.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-actions:first-of-type',
         ],
         [
             'title' => 'Match Types',
             'description' => 'Contains: matches if description includes the text. Exact: must match fully. Regex: for advanced patterns (e.g., "NEFT.*SALARY"). Contains covers 90% of cases.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-match-type',
         ],
         [
             'title' => 'Priority & Usage',
             'description' => 'Rules with lower priority numbers run first. The "Uses" column shows how often a rule matched — high-use rules are your most valuable automation.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-header-cell-priority',
         ],
     ],
 
@@ -160,7 +160,7 @@ return [
         [
             'title' => 'Review Matches',
             'description' => 'Green "Confirm" buttons appear on rows with suggestions. Click to accept. Use "Match Invoice" to manually link a transaction. "Reject All" clears bad suggestions.',
-            'element' => '.fi-ta',
+            'element' => '.fi-ta-actions:first-of-type',
         ],
     ],
 ];
