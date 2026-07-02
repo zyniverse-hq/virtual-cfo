@@ -702,9 +702,10 @@ class DocumentProcessor
                 'processed_at' => now(),
             ];
 
-            if (blank($file->display_name) || $file->display_name === $oldAutoName) {
-                $updates['display_name'] = $this->displayNameGenerator->generate($file);
-            }
+if (blank($file->display_name) || $file->display_name === $oldAutoName) {
+    $file->unsetRelation('transactions');
+    $updates['display_name'] = $this->displayNameGenerator->generate($file);
+}
 
             $file->update($updates);
         });
