@@ -27,6 +27,7 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
+    use \App\Filament\Concerns\HasPageTour;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
@@ -37,6 +38,18 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
     protected static ?int $navigationSort = 3;
 
     protected string $view = 'filament.pages.review-queue';
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            $this->getPageTourAction(),
+        ];
+    }
+
+    public function getFooter(): ?\Illuminate\Contracts\View\View
+    {
+        return $this->getPageTourFooter('review-queue');
+    }
 
     public function table(Table $table): Table
     {
