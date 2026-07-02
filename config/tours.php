@@ -163,4 +163,55 @@ return [
             'element' => '.fi-ta',
         ],
     ],
+
+    'review-queue' => [
+        [
+            'title' => 'Review Queue',
+            'description' => 'Welcome to the Review Queue! Here you can quickly review and verify AI-suggested mappings before they are finalized.',
+            'element' => null,
+        ],
+        [
+            'title' => 'Navigation Tabs',
+            'description' => 'Use these tabs to switch between Unreconciled items (needs review), Flagged items (needs your attention), and previously Reconciled items.',
+            'element' => '.fi-tabs',
+        ],
+        [
+            'title' => 'AI Confidence & Status',
+            'description' => 'Pay attention to the status badges and AI confidence scores. High confidence matches are safer to confirm, while flagged or low confidence items require manual verification.',
+            'element' => '.fi-ta-header-cell-ai-confidence',
+        ],
+        [
+            'title' => 'Confirm vs Reject',
+            'description' => 'Use the Confirm button to accept an AI suggestion, or Reject if it is incorrect. You can also use bulk actions for multiple rows.',
+            'element' => '.fi-ta-actions:first-of-type',
+        ],
+        [
+            'title' => 'Search & Filters',
+            'description' => 'Use the search bar and filter button here to narrow down the queue by specific dates, amounts, or text.',
+            'element' => '.fi-ta-header-toolbar',
+        ],
+    ],
+
+    'inbound-emails' => [
+        [
+            'title' => 'Mailing System',
+            'description' => 'This is your Inbound Email hub. Any statement sent directly to your company\'s dedicated inbox will automatically be parsed and imported.',
+            'element' => null,
+        ],
+        [
+            'title' => 'Inbox Address & Stats',
+            'description' => 'These widgets display your recent email volume and highlight any emails that were rejected or arrived with no attachments.',
+            'element' => '.fi-wi-stats-overview',
+        ],
+        [
+            'title' => 'Attachment Indicators',
+            'description' => 'This column instantly shows you how many attachments were detected in the email, letting you know if a statement was successfully attached.',
+            'element' => '.fi-ta-header-cell-attachment-count',
+        ],
+        [
+            'title' => 'Status Badges',
+            'description' => 'Emails will be marked as Processed, Rejected, Duplicate, or No Attachments. Click any row to view the email details and rejection reasons.',
+            'element' => '.fi-ta-header-cell-status',
+        ],
+    ],
 ];

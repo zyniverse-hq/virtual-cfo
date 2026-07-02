@@ -38,6 +38,24 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
 
     protected string $view = 'filament.pages.review-queue';
 
+    protected function getHeaderActions(): array
+    {
+        return [
+            \Filament\Actions\Action::make('page_tour')
+                ->label('Page Tour')
+                ->icon('heroicon-o-academic-cap')
+                ->color('gray')
+                ->extraAttributes([
+                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
+                ]),
+        ];
+    }
+
+    public function getFooter(): ?\Illuminate\Contracts\View\View
+    {
+        return view('livewire.page-tour-embed', ['pageId' => 'review-queue']);
+    }
+
     public function table(Table $table): Table
     {
         /** @var Company $company */

@@ -11,6 +11,19 @@ class ListInboundEmails extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            \Filament\Actions\Action::make('page_tour')
+                ->label('Page Tour')
+                ->icon('heroicon-o-academic-cap')
+                ->color('gray')
+                ->extraAttributes([
+                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
+                ]),
+        ];
+    }
+
+    public function getFooter(): ?\Illuminate\Contracts\View\View
+    {
+        return view('livewire.page-tour-embed', ['pageId' => 'inbound-emails']);
     }
 }
