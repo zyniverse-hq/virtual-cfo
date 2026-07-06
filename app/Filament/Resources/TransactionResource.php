@@ -130,33 +130,37 @@ class TransactionResource extends Resource
                             ->label('Credit Card')
                             ->options(fn () => CreditCard::pluck('name', 'id'))
                             ->visible(function ($get) {
-                                $val = $get('value');
-                                return $val === 'credit_card' || (is_object($val) && $val->value === 'credit_card');
+                                $val = self::normalizeStatementType($get('value'));
+
+                                return $val === StatementType::CreditCard->value;
                             })
                             ->searchable(),
 
                         Forms\Components\Select::make('bank_account_id')
                             ->label('Bank Account')
-                            ->options(fn () => \App\Models\BankAccount::pluck('name', 'id'))
+                            ->options(fn () => BankAccount::pluck('name', 'id'))
                             ->visible(function ($get) {
-                                $val = $get('value');
-                                return $val === 'bank' || (is_object($val) && $val->value === 'bank');
+                                $val = self::normalizeStatementType($get('value'));
+
+                                return $val === StatementType::Bank->value;
                             })
                             ->searchable(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (blank($data['value'])) {
+                        $type = self::normalizeStatementType($data['value'] ?? null);
+
+                        if (blank($type)) {
                             return $query;
                         }
 
-                        $query->whereHas('importedFile', function (Builder $q) use ($data) {
-                            $q->where('statement_type', $data['value']);
+                        $query->whereHas('importedFile', function (Builder $q) use ($data, $type) {
+                            $q->where('statement_type', $type);
 
-                            if ($data['value'] === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                            if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
                                 $q->where('credit_card_id', $data['credit_card_id']);
                             }
 
-                            if ($data['value'] === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                            if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
                                 $q->where('bank_account_id', $data['bank_account_id']);
                             }
                         });
@@ -165,13 +169,14 @@ class TransactionResource extends Resource
                     })
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
+                        $type = self::normalizeStatementType($data['value'] ?? null);
 
-                        if (! blank($data['value'])) {
-                            $indicators[] = Tables\Filters\Indicator::make(StatementType::tryFrom($data['value'])?->getLabel())
+                        if (! blank($type)) {
+                            $indicators[] = Tables\Filters\Indicator::make(StatementType::tryFrom($type)?->getLabel())
                                 ->removeField('value');
                         }
 
-                        if ($data['value'] === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                        if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
                             $card = CreditCard::find($data['credit_card_id']);
                             if ($card) {
                                 $indicators[] = Tables\Filters\Indicator::make('Card: '.$card->name)
@@ -179,7 +184,7 @@ class TransactionResource extends Resource
                             }
                         }
 
-                        if ($data['value'] === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                        if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
                             $bank = BankAccount::find($data['bank_account_id']);
                             if ($bank) {
                                 $indicators[] = Tables\Filters\Indicator::make('Bank: '.$bank->name)
@@ -609,6 +614,23 @@ class TransactionResource extends Resource
                     ->close(),
             ])
             ->send();
+    }
+
+    private static function normalizeStatementType(mixed $value): ?string
+    {
+        if ($value instanceof StatementType) {
+            return $value->value;
+        }
+
+        if (is_object($value) && property_exists($value, 'value')) {
+            return (string) $value->value;
+        }
+
+        if (is_string($value) && ! blank($value)) {
+            return $value;
+        }
+
+        return null;
     }
 
     /** @return Builder<Transaction>|null */
