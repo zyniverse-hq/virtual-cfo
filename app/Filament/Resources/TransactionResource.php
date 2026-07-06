@@ -13,6 +13,7 @@ use App\Exports\TransactionExcelExport;
 use App\Filament\Resources\TransactionResource\Pages;
 use App\Jobs\MatchTransactionHeads;
 use App\Models\AccountHead;
+use App\Models\BankAccount;
 use App\Models\Company;
 use App\Models\CreditCard;
 use App\Models\HeadMapping;
@@ -122,21 +123,71 @@ class TransactionResource extends Resource
                         Forms\Components\Select::make('value')
                             ->label('Type')
                             ->options(StatementType::class)
-                            ->placeholder('All types'),
+                            ->placeholder('All types')
+                            ->live(),
+
+                        Forms\Components\Select::make('credit_card_id')
+                            ->label('Credit Card')
+                            ->options(fn () => CreditCard::pluck('name', 'id'))
+                            ->visible(function ($get) {
+                                $val = $get('value');
+                                return $val === 'credit_card' || (is_object($val) && $val->value === 'credit_card');
+                            })
+                            ->searchable(),
+
+                        Forms\Components\Select::make('bank_account_id')
+                            ->label('Bank Account')
+                            ->options(fn () => \App\Models\BankAccount::pluck('name', 'id'))
+                            ->visible(function ($get) {
+                                $val = $get('value');
+                                return $val === 'bank' || (is_object($val) && $val->value === 'bank');
+                            })
+                            ->searchable(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (blank($data['value'])) {
                             return $query;
                         }
 
-                        return $query->whereHas('importedFile', fn (Builder $q) => $q->where('statement_type', $data['value']));
+                        $query->whereHas('importedFile', function (Builder $q) use ($data) {
+                            $q->where('statement_type', $data['value']);
+
+                            if ($data['value'] === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                                $q->where('credit_card_id', $data['credit_card_id']);
+                            }
+
+                            if ($data['value'] === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                                $q->where('bank_account_id', $data['bank_account_id']);
+                            }
+                        });
+
+                        return $query;
                     })
-                    ->indicateUsing(function (array $data): ?string {
-                        if (blank($data['value'])) {
-                            return null;
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+
+                        if (! blank($data['value'])) {
+                            $indicators[] = Tables\Filters\Indicator::make(StatementType::tryFrom($data['value'])?->getLabel())
+                                ->removeField('value');
                         }
 
-                        return StatementType::tryFrom($data['value'])?->getLabel();
+                        if ($data['value'] === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                            $card = CreditCard::find($data['credit_card_id']);
+                            if ($card) {
+                                $indicators[] = Tables\Filters\Indicator::make('Card: '.$card->name)
+                                    ->removeField('credit_card_id');
+                            }
+                        }
+
+                        if ($data['value'] === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                            $bank = BankAccount::find($data['bank_account_id']);
+                            if ($bank) {
+                                $indicators[] = Tables\Filters\Indicator::make('Bank: '.$bank->name)
+                                    ->removeField('bank_account_id');
+                            }
+                        }
+
+                        return $indicators;
                     }),
 
                 Tables\Filters\SelectFilter::make('mapping_type')
