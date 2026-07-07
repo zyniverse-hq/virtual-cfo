@@ -22,13 +22,39 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  */
 class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents, WithHeadings, WithMapping
 {
-    /** @param Builder<Transaction>|null $baseQuery */
+    /**
+     * @param  Builder<Transaction>|null  $baseQuery
+     * @param  array<int, string>|null  $selectedColumns
+     */
     public function __construct(
         public ?string $from = null,
         public ?string $until = null,
         public ?Builder $baseQuery = null,
         public ?ImportedFile $importedFile = null,
-    ) {}
+        public ?array $selectedColumns = null,
+    ) {
+        if (empty($this->selectedColumns)) {
+            $this->selectedColumns = array_keys(self::availableColumns());
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function availableColumns(): array
+    {
+        return [
+            'date' => 'Date',
+            'reference' => 'Reference',
+            'account_head' => 'Account Head',
+            'debit' => 'Debit',
+            'credit' => 'Credit',
+            'balance' => 'Balance',
+            'currency' => 'Currency',
+            'account_head_group' => 'Account Head Group',
+            'description' => 'Description',
+        ];
+    }
 
     /**
      * @return Builder<Transaction>
@@ -73,17 +99,9 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
      */
     public function headings(): array
     {
-        return [
-            'Date',
-            'Reference',
-            'Account Head',
-            'Debit',
-            'Credit',
-            'Balance',
-            'Currency',
-            'Account Head Group',
-            'Description',
-        ];
+        $all = self::availableColumns();
+
+        return array_values(array_intersect_key($all, array_flip($this->selectedColumns)));
     }
 
     /**
@@ -97,17 +115,19 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
         /** @var AccountHead|null $accountHead */
         $accountHead = $row->accountHead;
 
-        return [
-            $date->format('d M Y'),
-            $row->reference_number,
-            $accountHead?->name,
-            $row->debit !== null ? (float) $row->debit : null,
-            $row->credit !== null ? (float) $row->credit : null,
-            $row->balance !== null ? (float) $row->balance : null,
-            $row->currency,
-            $accountHead?->group_name,
-            $row->description,
+        $fullMap = [
+            'date' => $date->format('d M Y'),
+            'reference' => $row->reference_number,
+            'account_head' => $accountHead?->name,
+            'debit' => $row->debit !== null ? (float) $row->debit : null,
+            'credit' => $row->credit !== null ? (float) $row->credit : null,
+            'balance' => $row->balance !== null ? (float) $row->balance : null,
+            'currency' => $row->currency,
+            'account_head_group' => $accountHead?->group_name,
+            'description' => $row->description,
         ];
+
+        return array_values(array_intersect_key($fullMap, array_flip($this->selectedColumns)));
     }
 
     /**

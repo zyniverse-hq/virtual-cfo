@@ -410,6 +410,12 @@ class TransactionsRelationManager extends RelationManager
                         ->form([
                             Forms\Components\DatePicker::make('from')->label('From Date'),
                             Forms\Components\DatePicker::make('until')->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data): BinaryFileResponse {
                             /** @var ImportedFile $file */
@@ -421,6 +427,7 @@ class TransactionsRelationManager extends RelationManager
                                     until: $data['until'] ?? null,
                                     baseQuery: Transaction::where('imported_file_id', $file->id),
                                     importedFile: $file,
+                                    selectedColumns: $data['columns'] ?? null,
                                 ),
                                 'transactions-'.now()->format('Y-m-d-His').'.csv',
                             );
@@ -432,6 +439,12 @@ class TransactionsRelationManager extends RelationManager
                         ->form([
                             Forms\Components\DatePicker::make('from')->label('From Date'),
                             Forms\Components\DatePicker::make('until')->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data): BinaryFileResponse {
                             /** @var ImportedFile $file */
@@ -443,6 +456,7 @@ class TransactionsRelationManager extends RelationManager
                                     until: $data['until'] ?? null,
                                     baseQuery: Transaction::where('imported_file_id', $file->id),
                                     importedFile: $file->load('creditCard'),
+                                    selectedColumns: $data['columns'] ?? null,
                                 ),
                                 'transactions-'.now()->format('Y-m-d-His').'.xlsx',
                             );
