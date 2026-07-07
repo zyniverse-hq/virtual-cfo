@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 describe('export base query filtering', function () {
     beforeEach(function () {
@@ -330,7 +332,7 @@ describe('TransactionDetailSheet', function () {
         expect($ws->getPrintGridlines())->toBeTrue();
 
         $pageSetup = $ws->getPageSetup();
-        expect($pageSetup->getOrientation())->toBe(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)
+        expect($pageSetup->getOrientation())->toBe(PageSetup::ORIENTATION_LANDSCAPE)
             ->and($pageSetup->getFitToPage())->toBeTrue()
             ->and($pageSetup->getFitToWidth())->toBe(1)
             ->and($pageSetup->getFitToHeight())->toBe(0);
@@ -342,7 +344,7 @@ describe('TransactionDetailSheet', function () {
 
         $alignment2 = $ws->getStyle('I2')->getAlignment();
         expect($alignment2->getWrapText())->toBeTrue()
-            ->and($alignment2->getVertical())->toBe(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+            ->and($alignment2->getVertical())->toBe(Alignment::VERTICAL_TOP);
 
         // Row height for Row 2 should be dynamic (30.0 for 2 lines)
         expect($ws->getRowDimension(2)->getRowHeight())->toBe(30.0);
@@ -354,7 +356,7 @@ describe('TransactionDetailSheet', function () {
         // Column wrapping should be enabled
         $alignment3 = $ws->getStyle('I3')->getAlignment();
         expect($alignment3->getWrapText())->toBeTrue()
-            ->and($alignment3->getVertical())->toBe(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+            ->and($alignment3->getVertical())->toBe(Alignment::VERTICAL_TOP);
 
         // Row height for Row 3 should be default (20.0)
         expect($ws->getRowDimension(3)->getRowHeight())->toBe(20.0);

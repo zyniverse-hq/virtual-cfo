@@ -471,6 +471,12 @@ class TransactionResource extends Resource
                                 ->label('From Date'),
                             Forms\Components\DatePicker::make('until')
                                 ->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data, Component $livewire): BinaryFileResponse {
                             $export = new TransactionCsvExport(
@@ -478,6 +484,7 @@ class TransactionResource extends Resource
                                 until: $data['until'] ?? null,
                                 baseQuery: self::resolveExportBaseQuery($livewire),
                                 importedFile: self::resolveExportImportedFile($livewire),
+                                selectedColumns: $data['columns'] ?? null,
                             );
 
                             return Excel::download(
@@ -494,6 +501,12 @@ class TransactionResource extends Resource
                                 ->label('From Date'),
                             Forms\Components\DatePicker::make('until')
                                 ->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data, Component $livewire): BinaryFileResponse {
                             $export = new TransactionExcelExport(
@@ -501,6 +514,7 @@ class TransactionResource extends Resource
                                 until: $data['until'] ?? null,
                                 baseQuery: self::resolveExportBaseQuery($livewire),
                                 importedFile: self::resolveExportImportedFile($livewire),
+                                selectedColumns: $data['columns'] ?? null,
                             );
 
                             return Excel::download(
