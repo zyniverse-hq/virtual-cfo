@@ -303,6 +303,67 @@ describe('TransactionDetailSheet', function () {
 
         Storage::disk('local')->delete($path);
     });
+
+    it('wraps long descriptions and calculates dynamic row heights', function () {
+        $head = AccountHead::factory()->create();
+
+        // 1. Long description (length > 40)
+        $longDesc = 'UPI/DR/614692092739/AMIR ALI/YESB/q591542273/Paid-Long';
+        Transaction::factory()->mapped($head)->create([
+            'description' => $longDesc,
+            'date' => '2025-03-01',
+        ]);
+
+        // 2. Short description (length <= 40)
+        $shortDesc = 'Short description';
+        Transaction::factory()->mapped($head)->create([
+            'description' => $shortDesc,
+            'date' => '2025-03-02',
+        ]);
+
+        $path = 'test-exports/detail-sheet-wrapping.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        expect($ws->getPrintGridlines())->toBeTrue();
+
+        $pageSetup = $ws->getPageSetup();
+        expect($pageSetup->getOrientation())->toBe(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)
+            ->and($pageSetup->getFitToPage())->toBeTrue()
+            ->and($pageSetup->getFitToWidth())->toBe(1)
+            ->and($pageSetup->getFitToHeight())->toBe(0);
+
+        // Verify row 2 (long description)
+        $desc2 = $ws->getCell('I2')->getValue();
+        $expectedWrapped = "UPI/DR/614692092739/AMIR ALI/\nYESB/q591542273/Paid-Long";
+        expect($desc2)->toBe($expectedWrapped);
+
+        $alignment2 = $ws->getStyle('I2')->getAlignment();
+        expect($alignment2->getWrapText())->toBeTrue()
+            ->and($alignment2->getVertical())->toBe(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+
+        // Row height for Row 2 should be dynamic (30.0 for 2 lines)
+        expect($ws->getRowDimension(2)->getRowHeight())->toBe(30.0);
+
+        // Verify row 3 (short description)
+        $desc3 = $ws->getCell('I3')->getValue();
+        expect($desc3)->toBe($shortDesc);
+
+        // Column wrapping should be enabled
+        $alignment3 = $ws->getStyle('I3')->getAlignment();
+        expect($alignment3->getWrapText())->toBeTrue()
+            ->and($alignment3->getVertical())->toBe(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+
+        // Row height for Row 3 should be default (20.0)
+        expect($ws->getRowDimension(3)->getRowHeight())->toBe(20.0);
+
+        // Verify Totals Row (Row 4) has height 20.0
+        expect($ws->getRowDimension(4)->getRowHeight())->toBe(20.0);
+
+        Storage::disk('local')->delete($path);
+    });
 });
 
 describe('TransactionSummarySheet', function () {
@@ -410,6 +471,8 @@ describe('TransactionSummarySheet', function () {
 
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getPrintGridlines())->toBeTrue();
 
         expect($ws->getCell('A3')->getValue())->toBe('Opening Balance:')
             ->and((float) $ws->getCell('B3')->getValue())->toBe(10000.0);
