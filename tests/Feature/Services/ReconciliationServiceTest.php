@@ -441,6 +441,46 @@ describe('ReconciliationService', function () {
             expect($result->matched)->toBe(1)
                 ->and(ReconciliationMatch::count())->toBe(1);
         });
+
+        it('reconciles bank transactions against multiple invoice files', function () {
+            $invoiceFile2 = ImportedFile::factory()->completed()->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+            ]);
+
+            Transaction::factory()->debit(10000.00)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'Payment 1',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(20000.00)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'Payment 2',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(10000.00)->create([
+                'imported_file_id' => $this->invoiceFile->id,
+                'description' => 'Invoice 1',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(20000.00)->create([
+                'imported_file_id' => $invoiceFile2->id,
+                'description' => 'Invoice 2',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $result = $this->service->reconcile($this->bankFile, [$this->invoiceFile, $invoiceFile2]);
+
+            expect($result->matched)->toBe(2)
+                ->and(ReconciliationMatch::count())->toBe(2);
+        });
     });
 
     describe('flagUnmatched', function () {

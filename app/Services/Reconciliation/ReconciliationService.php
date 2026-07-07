@@ -37,11 +37,13 @@ class ReconciliationService
     private const MIN_PARTY_SIMILARITY = 60;
 
     /**
-     * Run the full reconciliation process for a bank file against an invoice file.
+     * Run the full reconciliation process for a bank file against one or more invoice files.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
     public function reconcile(
         ImportedFile $bankFile,
-        ImportedFile $invoiceFile,
+        ImportedFile|Collection|array $invoiceFiles,
         float $tolerance = self::DEFAULT_AMOUNT_TOLERANCE,
         int $dayWindow = self::DEFAULT_DATE_WINDOW,
     ): ReconciliationResult {
@@ -51,12 +53,18 @@ class ReconciliationService
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
-        $invoiceTransactions = $invoiceFile->transactions()
+        $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
+            ? collect([$invoiceFiles])
+            : collect($invoiceFiles);
+
+        $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
+
+        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
         if ($bankTransactions->isEmpty() || $invoiceTransactions->isEmpty()) {
-            $this->flagUnmatched($bankFile, $invoiceFile);
+            $this->flagUnmatched($bankFile, $invoiceFilesCollection);
             $result->flagged = $bankTransactions->count() + $invoiceTransactions->count();
 
             return $result;
@@ -102,18 +110,18 @@ class ReconciliationService
         });
 
         // Flag remaining unmatched items
-        $this->flagUnmatched($bankFile, $invoiceFile);
+        $this->flagUnmatched($bankFile, $invoiceFilesCollection);
+
+        $allFileIds = array_merge([$bankFile->id], $invoiceFileIds);
 
         // Count flagged items
-        $result->flagged = Transaction::where(function ($query) use ($bankFile, $invoiceFile) {
-            $query->where('imported_file_id', $bankFile->id)
-                ->orWhere('imported_file_id', $invoiceFile->id);
-        })->where('reconciliation_status', ReconciliationStatus::Flagged)->count();
+        $result->flagged = Transaction::whereIn('imported_file_id', $allFileIds)
+            ->where('reconciliation_status', ReconciliationStatus::Flagged)
+            ->count();
 
-        $result->unreconciled = Transaction::where(function ($query) use ($bankFile, $invoiceFile) {
-            $query->where('imported_file_id', $bankFile->id)
-                ->orWhere('imported_file_id', $invoiceFile->id);
-        })->where('reconciliation_status', ReconciliationStatus::Unreconciled)->count();
+        $result->unreconciled = Transaction::whereIn('imported_file_id', $allFileIds)
+            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->count();
 
         return $result;
     }
@@ -310,16 +318,22 @@ class ReconciliationService
 
     /**
      * Flag all unmatched transactions in both files.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
-    public function flagUnmatched(ImportedFile $bankFile, ImportedFile $invoiceFile): void
+    public function flagUnmatched(ImportedFile $bankFile, ImportedFile|Collection|array $invoiceFiles): void
     {
+        $invoiceFileIds = ($invoiceFiles instanceof ImportedFile ? collect([$invoiceFiles]) : collect($invoiceFiles))
+            ->pluck('id')
+            ->all();
+
         // Flag unreconciled bank transactions
         Transaction::where('imported_file_id', $bankFile->id)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->update(['reconciliation_status' => ReconciliationStatus::Flagged]);
 
         // Flag unreconciled invoice transactions
-        Transaction::where('imported_file_id', $invoiceFile->id)
+        Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->update(['reconciliation_status' => ReconciliationStatus::Flagged]);
     }
@@ -427,14 +441,25 @@ class ReconciliationService
     /**
      * Scan for invoice match candidates and create suggested matches.
      * Returns the number of suggestions created.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
-    public function suggestMatches(ImportedFile $invoiceFile): int
+    public function suggestMatches(ImportedFile|Collection|array $invoiceFiles): int
     {
-        $companyId = $invoiceFile->company_id;
+        $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
+            ? collect([$invoiceFiles])
+            : collect($invoiceFiles);
 
-        // Get all unreconciled invoice transactions from this file
+        if ($invoiceFilesCollection->isEmpty()) {
+            return 0;
+        }
+
+        $companyId = $invoiceFilesCollection->first()->company_id;
+        $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
+
+        // Get all unreconciled invoice transactions from these files
         /** @var Collection<int, Transaction> $invoiceTransactions */
-        $invoiceTransactions = $invoiceFile->transactions()
+        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
