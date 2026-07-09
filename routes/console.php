@@ -11,4 +11,4 @@ Artisan::command('inspire', function () {
 Schedule::command('connectors:sync-zoho')->hourly();
 Schedule::command('queue:prune-failed --hours=72')->daily();
 Schedule::command('activitylog:clean')->daily();
-Schedule::command('tally:run-scheduled-exports')->everyFiveMinutes();
+Schedule::command('tally:run-scheduled-exports')->everyMinute();

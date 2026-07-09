@@ -154,6 +154,38 @@ describe('ScheduledTallyExport isDue', function () {
         expect($schedule->isDue($now))->toBeTrue();
     });
 
+    it('respects timezone configuration for weekly schedules', function () {
+        $schedule = ScheduledTallyExport::factory()->weekly()->create([
+            'day_of_week' => 1, // Monday
+            'time_of_day' => '10:00',
+            'timezone' => 'Asia/Kolkata', // IST = UTC+5:30
+        ]);
+
+        // 2026-07-06 is Monday. 04:30 UTC = 10:00 IST
+        $now = Carbon::create(2026, 7, 6, 4, 30, 0, 'UTC');
+        expect($schedule->isDue($now))->toBeTrue();
+
+        // Wrong day (Tuesday) at same hour should return false
+        $wrongDay = Carbon::create(2026, 7, 7, 4, 30, 0, 'UTC');
+        expect($schedule->isDue($wrongDay))->toBeFalse();
+    });
+
+    it('respects timezone configuration for monthly schedules', function () {
+        $schedule = ScheduledTallyExport::factory()->monthly()->create([
+            'day_of_month' => 5,
+            'time_of_day' => '10:00',
+            'timezone' => 'Asia/Kolkata',
+        ]);
+
+        // 5th of month at 04:30 UTC = 10:00 IST
+        $now = Carbon::create(2026, 7, 5, 4, 30, 0, 'UTC');
+        expect($schedule->isDue($now))->toBeTrue();
+
+        // Wrong day of month should return false
+        $wrongDay = Carbon::create(2026, 7, 6, 4, 30, 0, 'UTC');
+        expect($schedule->isDue($wrongDay))->toBeFalse();
+    });
+
     it('resolves date range via model method', function () {
         $schedule = ScheduledTallyExport::factory()->create([
             'date_range_window' => DateRangeWindow::Previous7Days,

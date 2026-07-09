@@ -14,6 +14,13 @@ use Illuminate\Support\Carbon;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
+/**
+ * @property int $id
+ * @property int $company_id
+ * @property \Carbon\Carbon|null $last_run_at
+ * @property string|null $last_run_status
+ * @property string|null $last_run_message
+ */
 class ScheduledTallyExport extends Model
 {
     /** @use HasFactory<ScheduledTallyExportFactory> */
