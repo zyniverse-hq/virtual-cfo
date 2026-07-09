@@ -7,6 +7,7 @@ use App\Enums\ExportFrequency;
 use App\Enums\StatementType;
 use App\Jobs\SendScheduledTallyExport;
 use App\Models\Company;
+use App\Models\ScheduledExportRun;
 use App\Models\ScheduledTallyExport;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -26,14 +27,19 @@ use Filament\Schemas\Components\EmbeddedSchema;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Tables;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 
 /**
  * @property-read Schema $form
  */
-class ScheduledExports extends Page
+class ScheduledExports extends Page implements HasTable
 {
     use InteractsWithFormActions;
+    use InteractsWithTable;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clock';
 
@@ -215,7 +221,7 @@ class ScheduledExports extends Page
                                     ? $state['frequency']->value
                                     : (string) $state['frequency'];
 
-                                return ucfirst($frequency) . ' at ' . $state['time_of_day'];
+                                return ucfirst($frequency).' at '.$state['time_of_day'];
                             }),
                     ]),
             ]);
@@ -288,7 +294,7 @@ class ScheduledExports extends Page
                     return;
                 }
 
-                SendScheduledTallyExport::dispatch($schedule);
+                SendScheduledTallyExport::dispatch($schedule, 'manual');
 
                 Notification::make()
                     ->title('Test export dispatched — check your email shortly.')
@@ -303,5 +309,78 @@ class ScheduledExports extends Page
             ->label('Save changes')
             ->submit('save')
             ->keyBindings(['mod+s']);
+    }
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->heading('Export History')
+            ->description('Audit log of scheduled and manual Tally XML export runs.')
+            ->query(
+                ScheduledExportRun::query()
+                    ->where('company_id', $this->company?->id)
+                    ->with(['scheduledExport'])
+                    ->latest('created_at')
+            )
+            ->columns([
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Run Date & Time')
+                    ->dateTime('d M Y, h:i A')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('schedule')
+                    ->label('Schedule')
+                    ->state(fn (ScheduledExportRun $record): string => $record->scheduledExport?->schedule_description ?? 'Manual'),
+
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'success' => 'success',
+                        'failed' => 'danger',
+                        'no_data' => 'warning',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'success' => 'Sent',
+                        'failed' => 'Failed',
+                        'no_data' => 'No Data',
+                        default => ucfirst($state),
+                    }),
+
+                Tables\Columns\TextColumn::make('period')
+                    ->label('Date Range')
+                    ->state(function (ScheduledExportRun $record): string {
+                        if (! $record->period_start || ! $record->period_end) {
+                            return '—';
+                        }
+
+                        return $record->period_start->format('d M Y').' – '.$record->period_end->format('d M Y');
+                    }),
+
+                Tables\Columns\TextColumn::make('transactions_count')
+                    ->label('Transactions')
+                    ->numeric(),
+
+                Tables\Columns\TextColumn::make('recipients')
+                    ->label('Recipients')
+                    ->state(fn (ScheduledExportRun $record): string => implode(', ', $record->recipients)),
+
+                Tables\Columns\TextColumn::make('triggered_by')
+                    ->label('Trigger')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'manual' => 'warning',
+                        default => 'info',
+                    })
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state)),
+
+                Tables\Columns\TextColumn::make('error_message')
+                    ->label('Message')
+                    ->limit(40)
+                    ->placeholder('—'),
+            ])
+            ->paginated([50])
+            ->defaultPaginationPageOption(50);
     }
 }

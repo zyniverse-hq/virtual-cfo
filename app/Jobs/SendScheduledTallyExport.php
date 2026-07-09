@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Mail\TallyExportMail;
+use App\Models\ScheduledExportRun;
 use App\Models\ScheduledTallyExport;
 use App\Models\Transaction;
 use App\Services\TallyExport\TallyExportService;
@@ -27,6 +28,7 @@ class SendScheduledTallyExport implements ShouldQueue
 
     public function __construct(
         public ScheduledTallyExport $scheduledExport,
+        public string $triggeredBy = 'scheduler',
     ) {}
 
     /**
@@ -68,7 +70,13 @@ class SendScheduledTallyExport implements ShouldQueue
         $transactions = $query->get();
 
         if ($transactions->isEmpty()) {
-            $this->updateRunStatus('no_data', 'No mapped transactions found for the configured date range.');
+            $this->updateRunStatus(
+                status: 'no_data',
+                message: 'No mapped transactions found for the configured date range.',
+                transactionsCount: 0,
+                from: $from,
+                to: $to,
+            );
             Log::info('Scheduled Tally export skipped — no transactions', [
                 'schedule_id' => $this->scheduledExport->id,
                 'company_id' => $company->id,
@@ -97,7 +105,13 @@ class SendScheduledTallyExport implements ShouldQueue
                 ));
             }
 
-            $this->updateRunStatus('success');
+            $this->updateRunStatus(
+                status: 'success',
+                message: null,
+                transactionsCount: $transactions->count(),
+                from: $from,
+                to: $to,
+            );
 
             Log::info('Scheduled Tally export sent successfully', [
                 'schedule_id' => $this->scheduledExport->id,
@@ -175,12 +189,29 @@ class SendScheduledTallyExport implements ShouldQueue
         return $zipPath;
     }
 
-    private function updateRunStatus(string $status, ?string $message = null): void
-    {
+    private function updateRunStatus(
+        string $status,
+        ?string $message = null,
+        int $transactionsCount = 0,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+    ): void {
         $this->scheduledExport->update([
             'last_run_at' => now(),
             'last_run_status' => $status,
             'last_run_message' => $message,
+        ]);
+
+        ScheduledExportRun::create([
+            'company_id' => $this->scheduledExport->company_id,
+            'scheduled_tally_export_id' => $this->scheduledExport->id,
+            'status' => $status,
+            'transactions_count' => $transactionsCount,
+            'period_start' => $from?->toDateString(),
+            'period_end' => $to?->toDateString(),
+            'recipients' => $this->scheduledExport->recipient_emails,
+            'error_message' => $message,
+            'triggered_by' => $this->triggeredBy,
         ]);
     }
 }

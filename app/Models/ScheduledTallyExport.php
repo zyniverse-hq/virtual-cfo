@@ -9,6 +9,7 @@ use Database\Factories\ScheduledTallyExportFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Spatie\Activitylog\LogOptions;
@@ -17,6 +18,11 @@ use Spatie\Activitylog\Traits\LogsActivity;
 /**
  * @property int $id
  * @property int $company_id
+ * @property ExportFrequency $frequency
+ * @property int|null $day_of_week
+ * @property int|null $day_of_month
+ * @property string $time_of_day
+ * @property DateRangeWindow $date_range_window
  * @property \Carbon\Carbon|null $last_run_at
  * @property string|null $last_run_status
  * @property string|null $last_run_message
@@ -83,6 +89,12 @@ class ScheduledTallyExport extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** @return HasMany<ScheduledExportRun, $this> */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(ScheduledExportRun::class);
     }
 
     /**
