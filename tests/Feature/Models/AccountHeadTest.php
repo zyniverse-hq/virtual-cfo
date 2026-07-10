@@ -98,6 +98,71 @@ describe('AccountHead::fullPath', function () {
     });
 });
 
+describe('AccountHead deletion guard (replaces soft-delete cascade tests)', function () {
+    beforeEach(function () {
+        asUser();
+    });
+
+    it('preserves account_head_id on mapped transactions when delete is blocked', function () {
+        $head = AccountHead::factory()->create();
+        $txn = Transaction::factory()->mapped($head)->create();
+
+        try {
+            $head->delete();
+        } catch (\Illuminate\Validation\ValidationException) {
+            // expected
+        }
+
+        expect($txn->fresh()->account_head_id)->toBe($head->id);
+    });
+
+    it('does not alter TransactionAggregate when delete is blocked', function () {
+        $company = tenant();
+        $head = AccountHead::factory()->create(['company_id' => $company->id]);
+
+        Transaction::factory()->mapped($head)->debit(5000)->create([
+            'company_id' => $company->id,
+            'date' => '2025-04-15',
+        ]);
+
+        $aggregateBefore = TransactionAggregate::where('company_id', $company->id)
+            ->where('account_head_id', $head->id)
+            ->exists();
+
+        try {
+            $head->delete();
+        } catch (\Illuminate\Validation\ValidationException) {
+            // expected
+        }
+
+        $aggregateAfter = TransactionAggregate::where('company_id', $company->id)
+            ->where('account_head_id', $head->id)
+            ->exists();
+
+        expect($aggregateBefore)->toBe($aggregateAfter);
+    });
+
+    it('allows deletion when no transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+
+        $head->delete();
+
+        expect(AccountHead::find($head->id))->toBeNull();
+        expect(AccountHead::withTrashed()->find($head->id))->not->toBeNull();
+    });
+
+    it('includes the transaction count in the error message', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(3)->create();
+
+        try {
+            $head->delete();
+            $this->fail('Expected ValidationException was not thrown');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            expect($e->errors()['base'][0])->toContain('3 transactions are');
+        }
+    });
+});
 
 
 describe('AccountHead relationships', function () {

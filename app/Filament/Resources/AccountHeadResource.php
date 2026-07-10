@@ -261,19 +261,22 @@ class AccountHeadResource extends Resource
             ->action(self::tallyImportAction());
     }
 
-    public static function validateDeletion(AccountHead $record, $action): void
+    public static function validateDeletion(AccountHead $record, Actions\Action $action): void
     {
         $count = $record->transactions()->count();
         if ($count > 0) {
             Notification::make()
                 ->danger()
-                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is" : "{$count} transactions are") . " mapped to this head. Reassign them first.")
+                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is mapped to this head. Reassign it first." : "{$count} transactions are mapped to this head. Reassign them first."))
                 ->actions([
                     \Filament\Actions\Action::make('view_transactions')
                         ->label('View Transactions')
                         ->url(\App\Filament\Resources\TransactionResource::getUrl('index', [
                             'tableFilters' => [
-                                'account_head_id' => ['value' => $record->id],
+                                'account_head_id' => ['value' => (string) $record->id],
+                            ],
+                            'filters' => [
+                                'account_head_id' => ['value' => (string) $record->id],
                             ],
                         ]))
                         ->button(),
