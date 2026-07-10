@@ -9,9 +9,9 @@ use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 class TransactionExcelExport implements WithMultipleSheets
 {
-    /** 
-     * @param Builder<Transaction>|null $baseQuery
-     * @param array<int, string>|null $selectedColumns
+    /**
+     * @param  Builder<Transaction>|null  $baseQuery
+     * @param  array<int, string>|null  $selectedColumns
      */
     public function __construct(
         public ?string $from = null,

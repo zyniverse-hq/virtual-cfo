@@ -554,6 +554,96 @@ describe('TransactionExcelExport', function () {
     });
 });
 
+describe('dynamic column selection', function () {
+    beforeEach(function () {
+        asUser();
+    });
+
+    it('exports only selected columns subset in headings and map', function () {
+        $head = AccountHead::factory()->create([
+            'name' => 'Office Rent',
+            'group_name' => 'Indirect Expenses',
+        ]);
+        $transaction = Transaction::factory()->mapped($head)->debit(5000.50)->create([
+            'date' => '2025-03-15',
+            'description' => 'NEFT-RENT-PAYMENT',
+            'reference_number' => 'REF123',
+            'balance' => 45000.00,
+            'currency' => 'USD',
+        ]);
+        $transaction->load(['accountHead', 'importedFile']);
+
+        $selectedColumns = ['date', 'description', 'debit'];
+        $export = new TransactionCsvExport(selectedColumns: $selectedColumns);
+
+        expect($export->headings())->toBe([
+            'Date',
+            'Debit',
+            'Description',
+        ]);
+
+        $row = $export->map($transaction);
+
+        expect($row)->toBe([
+            '15 Mar 2025',
+            5000.50,
+            'NEFT-RENT-PAYMENT',
+        ]);
+    });
+
+    it('falls back to all columns when empty selection or null is provided', function () {
+        $head = AccountHead::factory()->create();
+        $transaction = Transaction::factory()->mapped($head)->create();
+        $transaction->load(['accountHead', 'importedFile']);
+
+        $allHeadings = [
+            'Date',
+            'Reference',
+            'Account Head',
+            'Debit',
+            'Credit',
+            'Balance',
+            'Currency',
+            'Account Head Group',
+            'Description',
+        ];
+
+        $exportEmpty = new TransactionCsvExport(selectedColumns: []);
+        expect($exportEmpty->headings())->toBe($allHeadings)
+            ->and(count($exportEmpty->map($transaction)))->toBe(9);
+
+        $exportNull = new TransactionCsvExport(selectedColumns: null);
+        expect($exportNull->headings())->toBe($allHeadings)
+            ->and(count($exportNull->map($transaction)))->toBe(9);
+    });
+
+    it('sets column widths and headings reflecting selectedColumns subset in Excel detail sheet', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create([
+            'date' => '2025-03-15',
+            'description' => 'Office Rent Payment',
+        ]);
+
+        $selectedColumns = ['date', 'description', 'debit'];
+        $path = 'test-exports/transactions-selected-columns.xlsx';
+        Excel::store(new TransactionExcelExport(selectedColumns: $selectedColumns), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getSheetByName('Transactions');
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Date')
+            ->and($sheet->getCell('B1')->getValue())->toBe('Debit')
+            ->and($sheet->getCell('C1')->getValue())->toBe('Description')
+            ->and($sheet->getCell('D1')->getValue())->toBeNull();
+
+        expect((int) $sheet->getColumnDimension('A')->getWidth())->toBe(14)
+            ->and((int) $sheet->getColumnDimension('B')->getWidth())->toBe(15)
+            ->and((int) $sheet->getColumnDimension('C')->getWidth())->toBe(45);
+
+        Storage::disk('local')->delete($path);
+    });
+});
+
 describe('ImportedFile new fields', function () {
     it('stores account_holder_name on imported file', function () {
         $file = ImportedFile::factory()->create([

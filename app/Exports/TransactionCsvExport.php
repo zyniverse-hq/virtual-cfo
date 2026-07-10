@@ -22,9 +22,9 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  */
 class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents, WithHeadings, WithMapping
 {
-    /** 
-     * @param Builder<Transaction>|null $baseQuery
-     * @param array<int, string>|null $selectedColumns
+    /**
+     * @param  Builder<Transaction>|null  $baseQuery
+     * @param  array<int, string>|null  $selectedColumns
      */
     public function __construct(
         public ?string $from = null,
@@ -33,8 +33,11 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
         public ?ImportedFile $importedFile = null,
         public ?array $selectedColumns = null,
     ) {
-        if ($this->selectedColumns === null) {
+        if (empty($this->selectedColumns)) {
             $this->selectedColumns = array_keys(self::availableColumns());
+        } else {
+            $allKeys = array_keys(self::availableColumns());
+            $this->selectedColumns = array_values(array_intersect($allKeys, $this->selectedColumns));
         }
     }
 
