@@ -249,7 +249,7 @@ describe('AccountHeadResource', function () {
         livewire(ListAccountHeads::class)
             ->callTableAction('delete', $head)
             ->assertSuccessful()
-            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign it first.');
 
         expect(AccountHead::find($head->id))->not->toBeNull();
     });
@@ -261,7 +261,7 @@ describe('AccountHeadResource', function () {
 
         livewire(ListAccountHeads::class)
             ->callTableBulkAction('delete', [$head, $head2])
-            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign it first.');
 
         expect(AccountHead::find($head->id))->not->toBeNull();
         expect(AccountHead::find($head2->id))->not->toBeNull();
@@ -273,7 +273,7 @@ describe('AccountHeadResource', function () {
 
         livewire(EditAccountHead::class, ['record' => $head->getRouteKey()])
             ->callAction('delete')
-            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign them first.');
+            ->assertNotified('Cannot delete — 1 transaction is mapped to this head. Reassign it first.');
 
         expect(AccountHead::find($head->id))->not->toBeNull();
     });

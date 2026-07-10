@@ -30,17 +30,27 @@ class AccountHead extends Model
     protected static function booted(): void
     {
         static::deleting(function (AccountHead $head) {
-            $count = $head->transactions()->count();
+            $count = $head->getMappedTransactionCount();
             if ($count > 0) {
-                $label = $count === 1
-                    ? '1 transaction is mapped to this head. Reassign it first.'
-                    : "{$count} transactions are mapped to this head. Reassign them first.";
-
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'base' => "Cannot delete — {$label}",
+                    'base' => $head->getDeletionErrorMessage($count),
                 ]);
             }
         });
+    }
+
+    public function getMappedTransactionCount(): int
+    {
+        return $this->transactions()->count();
+    }
+
+    public function getDeletionErrorMessage(int $count): string
+    {
+        $label = $count === 1
+            ? '1 transaction is mapped to this head. Reassign it first.'
+            : "{$count} transactions are mapped to this head. Reassign them first.";
+
+        return "Cannot delete — {$label}";
     }
 
     public function getActivitylogOptions(): LogOptions

@@ -149,14 +149,26 @@ class AccountHeadResource extends Resource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
                         ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\DeleteBulkAction $action) {
+                            $counts = \App\Models\Transaction::whereIn('account_head_id', $records->pluck('id'))
+                                ->selectRaw('account_head_id, count(*) as count')
+                                ->groupBy('account_head_id')
+                                ->pluck('count', 'account_head_id');
+
                             foreach ($records as $record) {
-                                self::validateDeletion($record, $action);
+                                /** @var AccountHead $record */
+                                self::validateDeletion($record, $action, $counts->get($record->id, 0));
                             }
                         }),
                     Actions\ForceDeleteBulkAction::make()
                         ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\ForceDeleteBulkAction $action) {
+                            $counts = \App\Models\Transaction::whereIn('account_head_id', $records->pluck('id'))
+                                ->selectRaw('account_head_id, count(*) as count')
+                                ->groupBy('account_head_id')
+                                ->pluck('count', 'account_head_id');
+
                             foreach ($records as $record) {
-                                self::validateDeletion($record, $action);
+                                /** @var AccountHead $record */
+                                self::validateDeletion($record, $action, $counts->get($record->id, 0));
                             }
                         }),
                     Actions\RestoreBulkAction::make(),
@@ -261,13 +273,13 @@ class AccountHeadResource extends Resource
             ->action(self::tallyImportAction());
     }
 
-    public static function validateDeletion(AccountHead $record, Actions\Action $action): void
+    public static function validateDeletion(AccountHead $record, \Filament\Actions\Action|\Filament\Actions\BulkAction $action, ?int $preloadedCount = null): void
     {
-        $count = $record->transactions()->count();
+        $count = $preloadedCount ?? $record->getMappedTransactionCount();
         if ($count > 0) {
             Notification::make()
                 ->danger()
-                ->title("Cannot delete — " . ($count === 1 ? "1 transaction is mapped to this head. Reassign it first." : "{$count} transactions are mapped to this head. Reassign them first."))
+                ->title($record->getDeletionErrorMessage($count))
                 ->actions([
                     \Filament\Actions\Action::make('view_transactions')
                         ->label('View Transactions')
