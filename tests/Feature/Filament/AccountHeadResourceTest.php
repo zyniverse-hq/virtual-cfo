@@ -5,6 +5,7 @@ use App\Filament\Resources\AccountHeadResource\Pages\CreateAccountHead;
 use App\Filament\Resources\AccountHeadResource\Pages\EditAccountHead;
 use App\Filament\Resources\AccountHeadResource\Pages\ListAccountHeads;
 use App\Models\AccountHead;
+use App\Models\Transaction;
 
 use function Pest\Livewire\livewire;
 
@@ -218,7 +219,7 @@ describe('AccountHeadResource', function () {
 
     it('blocks deletion of account head when transactions are mapped', function () {
         $head = AccountHead::factory()->create();
-        \App\Models\Transaction::factory()->mapped($head)->count(3)->create();
+        Transaction::factory()->mapped($head)->count(3)->create();
 
         livewire(ListAccountHeads::class)
             ->callTableAction('delete', $head)
@@ -231,7 +232,7 @@ describe('AccountHeadResource', function () {
     it('blocks force deletion of account head when transactions are mapped', function () {
         $head = AccountHead::factory()->create();
         $head->delete(); // Needs to be soft-deleted to run forceDelete action in most Filament setups
-        \App\Models\Transaction::factory()->mapped($head)->count(2)->create();
+        Transaction::factory()->mapped($head)->count(2)->create();
 
         livewire(ListAccountHeads::class)
             ->filterTable('trashed', true)
@@ -244,7 +245,7 @@ describe('AccountHeadResource', function () {
 
     it('blocks deletion of account head with singular grammar when 1 transaction is mapped', function () {
         $head = AccountHead::factory()->create();
-        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
 
         livewire(ListAccountHeads::class)
             ->callTableAction('delete', $head)
@@ -256,7 +257,7 @@ describe('AccountHeadResource', function () {
 
     it('blocks bulk deletion of account heads when transactions are mapped', function () {
         $head = AccountHead::factory()->create();
-        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
         $head2 = AccountHead::factory()->create();
 
         livewire(ListAccountHeads::class)
@@ -269,7 +270,7 @@ describe('AccountHeadResource', function () {
 
     it('blocks deletion of account head from the edit page when transactions are mapped', function () {
         $head = AccountHead::factory()->create();
-        \App\Models\Transaction::factory()->mapped($head)->count(1)->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
 
         livewire(EditAccountHead::class, ['record' => $head->getRouteKey()])
             ->callAction('delete')

@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::table('transactions', function (Blueprint $table) {
             $table->dropForeign(['account_head_id']);
             $table->foreign('account_head_id')
-                  ->references('id')
-                  ->on('account_heads')
-                  ->restrictOnDelete();
+                ->references('id')
+                ->on('account_heads')
+                ->restrictOnDelete();
         });
     }
 
@@ -28,9 +28,9 @@ return new class extends Migration
         Schema::table('transactions', function (Blueprint $table) {
             $table->dropForeign(['account_head_id']);
             $table->foreign('account_head_id')
-                  ->references('id')
-                  ->on('account_heads')
-                  ->nullOnDelete();
+                ->references('id')
+                ->on('account_heads')
+                ->nullOnDelete();
         });
     }
 };

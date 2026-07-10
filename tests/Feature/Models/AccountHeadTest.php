@@ -4,6 +4,7 @@ use App\Models\AccountHead;
 use App\Models\Transaction;
 use App\Models\TransactionAggregate;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 
 describe('AccountHead soft deletes', function () {
     it('uses the SoftDeletes trait', function () {
@@ -63,7 +64,7 @@ describe('AccountHead soft deletes', function () {
         Transaction::factory()->create(['account_head_id' => $head->id]);
 
         expect(fn () => $head->delete())
-            ->toThrow(\Illuminate\Validation\ValidationException::class);
+            ->toThrow(ValidationException::class);
     });
 
     it('throws exception when force deleting if transactions are mapped', function () {
@@ -71,7 +72,7 @@ describe('AccountHead soft deletes', function () {
         Transaction::factory()->create(['account_head_id' => $head->id]);
 
         expect(fn () => $head->forceDelete())
-            ->toThrow(\Illuminate\Validation\ValidationException::class);
+            ->toThrow(ValidationException::class);
     });
 });
 
@@ -109,7 +110,7 @@ describe('AccountHead deletion guard (replaces soft-delete cascade tests)', func
 
         try {
             $head->delete();
-        } catch (\Illuminate\Validation\ValidationException) {
+        } catch (ValidationException) {
             // expected
         }
 
@@ -131,7 +132,7 @@ describe('AccountHead deletion guard (replaces soft-delete cascade tests)', func
 
         try {
             $head->delete();
-        } catch (\Illuminate\Validation\ValidationException) {
+        } catch (ValidationException) {
             // expected
         }
 
@@ -158,12 +159,11 @@ describe('AccountHead deletion guard (replaces soft-delete cascade tests)', func
         try {
             $head->delete();
             $this->fail('Expected ValidationException was not thrown');
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             expect($e->errors()['base'][0])->toContain('3 transactions are');
         }
     });
 });
-
 
 describe('AccountHead relationships', function () {
     it('has children', function () {

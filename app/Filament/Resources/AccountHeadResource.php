@@ -6,10 +6,13 @@ use App\Enums\NavigationGroup;
 use App\Filament\Resources\AccountHeadResource\Pages;
 use App\Models\AccountHead;
 use App\Models\Company;
+use App\Models\Transaction;
 use App\Services\TallyImport\TallyMasterImportService;
 use BackedEnum;
 use Closure;
 use Filament\Actions;
+use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -22,6 +25,7 @@ use Filament\Tables;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Unique;
@@ -148,8 +152,8 @@ class AccountHeadResource extends Resource
             ->bulkActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
-                        ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\DeleteBulkAction $action) {
-                            $counts = \App\Models\Transaction::whereIn('account_head_id', $records->pluck('id'))
+                        ->before(function (Collection $records, Actions\DeleteBulkAction $action) {
+                            $counts = Transaction::whereIn('account_head_id', $records->pluck('id'))
                                 ->selectRaw('account_head_id, count(*) as count')
                                 ->groupBy('account_head_id')
                                 ->pluck('count', 'account_head_id');
@@ -160,8 +164,8 @@ class AccountHeadResource extends Resource
                             }
                         }),
                     Actions\ForceDeleteBulkAction::make()
-                        ->before(function (\Illuminate\Database\Eloquent\Collection $records, Actions\ForceDeleteBulkAction $action) {
-                            $counts = \App\Models\Transaction::whereIn('account_head_id', $records->pluck('id'))
+                        ->before(function (Collection $records, Actions\ForceDeleteBulkAction $action) {
+                            $counts = Transaction::whereIn('account_head_id', $records->pluck('id'))
                                 ->selectRaw('account_head_id, count(*) as count')
                                 ->groupBy('account_head_id')
                                 ->pluck('count', 'account_head_id');
@@ -211,7 +215,7 @@ class AccountHeadResource extends Resource
     }
 
     /**
-     * @return array<Actions\Action|Component>
+     * @return array<Action|Component>
      */
     private static function tallyImportForm(): array
     {
@@ -264,16 +268,16 @@ class AccountHeadResource extends Resource
         };
     }
 
-    private static function makeTallyImportAction(string $name): Actions\Action
+    private static function makeTallyImportAction(string $name): Action
     {
-        return Actions\Action::make($name)
+        return Action::make($name)
             ->label('Import from Tally XML')
             ->icon('heroicon-o-arrow-up-tray')
             ->form(self::tallyImportForm())
             ->action(self::tallyImportAction());
     }
 
-    public static function validateDeletion(AccountHead $record, \Filament\Actions\Action|\Filament\Actions\BulkAction $action, ?int $preloadedCount = null): void
+    public static function validateDeletion(AccountHead $record, Action|BulkAction $action, ?int $preloadedCount = null): void
     {
         $count = $preloadedCount ?? $record->getMappedTransactionCount();
         if ($count > 0) {
@@ -281,9 +285,9 @@ class AccountHeadResource extends Resource
                 ->danger()
                 ->title($record->getDeletionErrorMessage($count))
                 ->actions([
-                    \Filament\Actions\Action::make('view_transactions')
+                    Action::make('view_transactions')
                         ->label('View Transactions')
-                        ->url(\App\Filament\Resources\TransactionResource::getUrl('index', [
+                        ->url(TransactionResource::getUrl('index', [
                             'tableFilters' => [
                                 'account_head_id' => ['value' => (string) $record->id],
                             ],

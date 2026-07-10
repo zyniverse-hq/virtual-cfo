@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -16,7 +16,6 @@ class AccountHead extends Model
     use HasFactory;
     use LogsActivity;
     use SoftDeletes;
-
 
     protected $fillable = [
         'company_id',
@@ -32,7 +31,7 @@ class AccountHead extends Model
         static::deleting(function (AccountHead $head) {
             $count = $head->getMappedTransactionCount();
             if ($count > 0) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'base' => $head->getDeletionErrorMessage($count),
                 ]);
             }
