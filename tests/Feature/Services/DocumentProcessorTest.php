@@ -239,6 +239,36 @@ describe('DocumentProcessor', function () {
                 ->and($file->total_rows)->toBe(1);
         });
 
+        it('regenerates display name dynamically if it was a default fallback', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => \Carbon\Carbon::parse('2025-01-10'),
+            ]);
+            
+            $file->update(['display_name' => 'Jan 2025']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            expect($file->display_name)->toBe('HDFC Bank Jan 2025');
+        });
+
         it('routes credit card statement PDFs to StatementParser agent', function () {
             Storage::put('statements/cc.pdf', 'fake-pdf-content');
 
