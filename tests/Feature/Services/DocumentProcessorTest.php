@@ -11,6 +11,7 @@ use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\DocumentProcessor\DocumentProcessor;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -258,9 +259,9 @@ describe('DocumentProcessor', function () {
                 'status' => ImportStatus::Pending,
                 'bank_name' => null,
                 'statement_period' => null,
-                'created_at' => \Carbon\Carbon::parse('2025-01-10'),
+                'created_at' => Carbon::parse('2025-01-10'),
             ]);
-            
+
             $file->update(['display_name' => 'Jan 2025']);
 
             $this->processor->process($file);
@@ -288,16 +289,16 @@ describe('DocumentProcessor', function () {
                 'status' => ImportStatus::Pending,
                 'bank_name' => null,
                 'statement_period' => null,
-                'created_at' => \Carbon\Carbon::parse('2025-01-10'),
+                'created_at' => Carbon::parse('2025-01-10'),
             ]);
-            
+
             // This explicitly simulates a manual user override that should NOT be touched
             $file->update(['display_name' => 'My Custom Override']);
 
             $this->processor->process($file);
 
             $file->refresh();
-            
+
             // The display name should NOT update to 'HDFC Bank Jan 2025'
             expect($file->display_name)->toBe('My Custom Override');
         });

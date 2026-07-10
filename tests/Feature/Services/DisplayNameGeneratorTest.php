@@ -81,7 +81,6 @@ describe('DisplayNameGenerator', function () {
         expect($name)->toBe('Feb 2025');
     });
 
-
     it('uses card_variant in display name when set and no credit card relationship', function () {
         $file = new ImportedFile;
         $file->forceFill([
