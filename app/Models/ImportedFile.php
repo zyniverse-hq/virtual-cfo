@@ -224,6 +224,8 @@ class ImportedFile extends Model
             return $baseName . ' ' . $variant;
         }
 
-        return $bankName;
+        $this->loadMissing('bankAccount');
+        
+        return trim((string) ($this->bankAccount?->name ?? $bankName));
     }
 }
