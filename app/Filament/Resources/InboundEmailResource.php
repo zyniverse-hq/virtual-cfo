@@ -8,10 +8,13 @@ use App\Filament\Resources\InboundEmailResource\Pages;
 use App\Models\Company;
 use App\Models\InboundEmail;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -72,8 +75,8 @@ class InboundEmailResource extends Resource
 
                 Tables\Columns\TextColumn::make('from_address')
                     ->label('Email & Subject')
-                    ->weight(\Filament\Support\Enums\FontWeight::Bold)
-                    ->description(fn (InboundEmail $record): ?string => str($record->subject)->limit(50))
+                    ->weight(FontWeight::Bold)
+                    ->description(fn (InboundEmail $record): ?string => str($record->subject)->limit(50)->toString())
                     ->searchable(['from_address', 'subject']),
 
                 Tables\Columns\TextColumn::make('status')
@@ -110,8 +113,8 @@ class InboundEmailResource extends Resource
                     }),
             ])
             ->actions([
-                \Filament\Actions\ActionGroup::make([
-                    \Filament\Actions\ViewAction::make(),
+                ActionGroup::make([
+                    ViewAction::make(),
                 ])->icon('heroicon-m-ellipsis-vertical'),
             ])
             ->recordUrl(fn (InboundEmail $record): string => static::getUrl('view', ['record' => $record]));
