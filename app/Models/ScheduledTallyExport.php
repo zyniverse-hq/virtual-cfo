@@ -100,8 +100,8 @@ class ScheduledTallyExport extends Model
     /**
      * Check if this schedule is due to run now.
      *
-     * Uses a 5-minute tolerance window to prevent missed runs
-     * from slight scheduler jitter (command runs everyFiveMinutes).
+     * Uses a 0–4 minute tolerance window to prevent missed runs
+     * from slight scheduler jitter (command runs everyMinute).
      */
     public function isDue(?Carbon $now = null): bool
     {

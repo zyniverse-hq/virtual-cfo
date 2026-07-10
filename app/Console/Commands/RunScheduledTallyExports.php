@@ -21,6 +21,11 @@ class RunScheduledTallyExports extends Command
 
         foreach ($schedules as $schedule) {
             if ($schedule->isDue()) {
+                $schedule->update([
+                    'last_run_at' => now(),
+                    'last_run_status' => 'queued',
+                ]);
+
                 SendScheduledTallyExport::dispatch($schedule);
                 $dispatched++;
 
