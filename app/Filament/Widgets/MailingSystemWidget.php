@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Enums\InboundEmailStatus;
 use App\Filament\Resources\InboundEmailResource;
+use App\Models\Company;
 use App\Models\InboundEmail;
 use Filament\Facades\Filament;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -14,9 +15,16 @@ class MailingSystemWidget extends BaseWidget
 {
     protected static ?int $sort = 3;
 
+    public static function canView(): bool
+    {
+        return auth()->user()->currentRole()?->canManageTeam() ?? false;
+    }
+
     protected function getStats(): array
     {
-        $tenantId = Filament::getTenant()?->id;
+        /** @var Company|null $tenant */
+        $tenant = Filament::getTenant();
+        $tenantId = $tenant?->id;
 
         if (! $tenantId) {
             return [];

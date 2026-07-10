@@ -76,7 +76,7 @@ class InboundEmailResource extends Resource
                 Tables\Columns\TextColumn::make('from_address')
                     ->label('Email & Subject')
                     ->weight(FontWeight::Bold)
-                    ->description(fn (InboundEmail $record): ?string => str($record->subject)->limit(50)->toString())
+                    ->description(fn (InboundEmail $record): string => str($record->subject)->limit(50)->toString())
                     ->searchable(['from_address', 'subject']),
 
                 Tables\Columns\TextColumn::make('status')

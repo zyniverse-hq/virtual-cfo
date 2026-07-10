@@ -56,12 +56,19 @@ describe('MailingSystemWidget', function () {
         // rejectedEmails = 1
         // noAttachments = 3
 
-        livewire(MailingSystemWidget::class)
-            ->assertSee('Emails Received (7 Days)')
-            ->assertSeeHtml('6')
-            ->assertSee('Rejected')
-            ->assertSeeHtml('1')
-            ->assertSee('No Attachments')
-            ->assertSeeHtml('3');
+        $widget = new MailingSystemWidget();
+        $method = new ReflectionMethod($widget, 'getStats');
+        $stats = $method->invoke($widget);
+
+        expect($stats)->toHaveCount(3);
+        
+        expect($stats[0]->getLabel())->toBe('Emails Received (7 Days)');
+        expect($stats[0]->getValue())->toBe(6);
+
+        expect($stats[1]->getLabel())->toBe('Rejected');
+        expect($stats[1]->getValue())->toBe(1);
+
+        expect($stats[2]->getLabel())->toBe('No Attachments');
+        expect($stats[2]->getValue())->toBe(3);
     });
 });
