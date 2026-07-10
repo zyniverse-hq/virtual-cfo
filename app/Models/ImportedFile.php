@@ -205,27 +205,27 @@ class ImportedFile extends Model
 
         if ($this->statement_type === StatementType::CreditCard) {
             $this->loadMissing('creditCard');
-            
+
             $baseName = trim((string) ($this->creditCard?->name ?? $bankName));
             $variant = trim((string) $this->card_variant);
-            
+
             if ($variant === '') {
                 return $baseName;
             }
-            
+
             if ($baseName === '') {
                 return $variant;
             }
-            
+
             if (stripos($variant, $baseName) !== false) {
                 return $variant;
             }
-            
-            return $baseName . ' ' . $variant;
+
+            return $baseName.' '.$variant;
         }
 
         $this->loadMissing('bankAccount');
-        
+
         return trim((string) ($this->bankAccount?->name ?? $bankName));
     }
 }

@@ -1,12 +1,14 @@
 <?php
 
 use App\Enums\MappingType;
+use App\Enums\StatementType;
 use App\Exports\TransactionCsvExport;
 use App\Exports\TransactionDetailSheet;
 use App\Exports\TransactionExcelExport;
 use App\Exports\TransactionSummarySheet;
 use App\Models\AccountHead;
 use App\Models\Company;
+use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -186,9 +188,9 @@ describe('TransactionCsvExport', function () {
     });
 
     it('writes metadata header rows for credit card statement with variant dedup', function () {
-        $card = \App\Models\CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
         $file = ImportedFile::factory()->create([
-            'statement_type' => \App\Enums\StatementType::CreditCard,
+            'statement_type' => StatementType::CreditCard,
             'credit_card_id' => $card->id,
             'bank_name' => 'ICICI Bank',
             'card_variant' => 'Amazon Pay ICICI Bank Credit Card',
