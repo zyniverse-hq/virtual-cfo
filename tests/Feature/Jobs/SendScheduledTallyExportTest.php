@@ -9,6 +9,7 @@ use App\Models\AccountHead;
 use App\Models\ImportedFile;
 use App\Models\ScheduledTallyExport;
 use App\Models\Transaction;
+use App\Services\TallyExport\TallyExportService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 
@@ -40,7 +41,7 @@ describe('SendScheduledTallyExport job', function () {
 
         Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
-        (new SendScheduledTallyExport($schedule))->handle(app(\App\Services\TallyExport\TallyExportService::class));
+        (new SendScheduledTallyExport($schedule))->handle(app(TallyExportService::class));
 
         Mail::assertSent(TallyExportMail::class, function (TallyExportMail $mail) {
             return $mail->hasTo('test@example.com')
@@ -64,7 +65,7 @@ describe('SendScheduledTallyExport job', function () {
 
         Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
-        (new SendScheduledTallyExport($schedule))->handle(app(\App\Services\TallyExport\TallyExportService::class));
+        (new SendScheduledTallyExport($schedule))->handle(app(TallyExportService::class));
 
         Mail::assertNothingSent();
 
@@ -102,7 +103,7 @@ describe('SendScheduledTallyExport job', function () {
 
         Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
-        (new SendScheduledTallyExport($schedule))->handle(app(\App\Services\TallyExport\TallyExportService::class));
+        (new SendScheduledTallyExport($schedule))->handle(app(TallyExportService::class));
 
         Mail::assertSent(TallyExportMail::class, 3);
 
@@ -155,7 +156,7 @@ describe('SendScheduledTallyExport job', function () {
 
         Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
-        (new SendScheduledTallyExport($schedule))->handle(app(\App\Services\TallyExport\TallyExportService::class));
+        (new SendScheduledTallyExport($schedule))->handle(app(TallyExportService::class));
 
         Mail::assertSent(TallyExportMail::class, function (TallyExportMail $mail) {
             // Only bank transactions should be included
@@ -171,7 +172,7 @@ describe('SendScheduledTallyExport job', function () {
         ]);
 
         $job = new SendScheduledTallyExport($schedule);
-        $job->failed(new \RuntimeException('Test failure'));
+        $job->failed(new RuntimeException('Test failure'));
 
         $schedule->refresh();
         expect($schedule->last_run_status)->toBe('failed')
@@ -214,7 +215,7 @@ describe('SendScheduledTallyExport job', function () {
 
         Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
-        (new SendScheduledTallyExport($schedule))->handle(app(\App\Services\TallyExport\TallyExportService::class));
+        (new SendScheduledTallyExport($schedule))->handle(app(TallyExportService::class));
 
         Mail::assertSent(TallyExportMail::class, function (TallyExportMail $mail) {
             return $mail->transactionCount === 1;

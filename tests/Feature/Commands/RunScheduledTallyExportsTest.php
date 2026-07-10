@@ -1,6 +1,5 @@
 <?php
 
-use App\Console\Commands\RunScheduledTallyExports;
 use App\Jobs\SendScheduledTallyExport;
 use App\Models\ScheduledTallyExport;
 use Illuminate\Support\Carbon;
