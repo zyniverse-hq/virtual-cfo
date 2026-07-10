@@ -185,6 +185,39 @@ describe('TransactionCsvExport', function () {
         Storage::disk('local')->delete($path);
     });
 
+    it('writes metadata header rows for credit card statement with variant dedup', function () {
+        $card = \App\Models\CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => \App\Enums\StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'Amazon Pay ICICI Bank Credit Card',
+            'account_holder_name' => 'John Doe',
+            'statement_period' => 'May 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/transactions-meta-cc.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Card:')
+            ->and($sheet->getCell('B1')->getValue())->toBe('Amazon Pay ICICI Bank Credit Card')
+            ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
+            ->and($sheet->getCell('B2')->getValue())->toBe('John Doe');
+
+        Storage::disk('local')->delete($path);
+    });
+
     it('respects date range filter', function () {
         $head = AccountHead::factory()->create();
         $inRange = Transaction::factory()->mapped($head)->create(['date' => '2025-03-15']);
