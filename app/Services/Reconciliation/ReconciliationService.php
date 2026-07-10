@@ -497,7 +497,10 @@ class ReconciliationService
         $suggestionsCreated = 0;
         /** @var Collection<int, int> $confirmedInvoiceIds */
         $confirmedInvoiceIds = collect();
-        $isEmailInvoice = $invoiceFile->source === ImportSource::Email;
+        $emailInvoiceFileIds = $invoiceFilesCollection
+            ->filter(fn (ImportedFile $file) => $file->source === ImportSource::Email)
+            ->pluck('id')
+            ->flip();
 
         foreach ($bankTransactions as $bankTxn) {
             if ($alreadySuggestedIds->has($bankTxn->id)) {
@@ -528,6 +531,7 @@ class ReconciliationService
                 MatchStatus::Suggested,
             );
 
+            $isEmailInvoice = $emailInvoiceFileIds->has($best['invoice']->imported_file_id);
             if ($isEmailInvoice && $best['confidence'] >= self::AUTO_CONFIRM_EMAIL_THRESHOLD) {
                 $this->confirmSuggestion($match);
                 $confirmedInvoiceIds->push($best['invoice']->id);

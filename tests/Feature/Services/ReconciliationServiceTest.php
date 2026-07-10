@@ -1059,6 +1059,9 @@ describe('ReconciliationService', function () {
             expect($match->status)->toBe(MatchStatus::Confirmed)
                 ->and($match->bank_transaction_id)->toBe($bankTxn1->id)
                 ->and($match->invoice_transaction_id)->toBe($invoiceTxn->id);
+        });
+    });
+
     describe('rejectAllSuggestions', function () {
         it('rejects all suggested matches for a bank transaction', function () {
             $bankTxn = Transaction::factory()->create([
