@@ -1,20 +1,33 @@
 <?php
 
 use App\Enums\InboundEmailStatus;
+use App\Enums\UserRole;
 use App\Filament\Widgets\MailingSystemWidget;
 use App\Models\Company;
 use App\Models\InboundEmail;
+use App\Models\User;
 use Illuminate\Support\Carbon;
-
-use function Pest\Livewire\livewire;
 
 describe('MailingSystemWidget', function () {
     beforeEach(function () {
         asUser();
     });
 
-    it('can render', function () {
-        livewire(MailingSystemWidget::class)->assertSuccessful();
+    describe('Access control', function () {
+        it('renders for authorized users', function () {
+            asUser(role: UserRole::Admin);
+            expect(MailingSystemWidget::canView())->toBeTrue();
+        });
+
+        it('denies access to viewer users', function () {
+            asUser(User::factory()->viewer()->create(), UserRole::Viewer);
+            expect(MailingSystemWidget::canView())->toBeFalse();
+        });
+
+        it('denies access to accountant users', function () {
+            asUser(User::factory()->accountant()->create(), UserRole::Accountant);
+            expect(MailingSystemWidget::canView())->toBeFalse();
+        });
     });
 
     it('shows correct counts and isolates tenant data', function () {
@@ -56,12 +69,12 @@ describe('MailingSystemWidget', function () {
         // rejectedEmails = 1
         // noAttachments = 3
 
-        $widget = new MailingSystemWidget();
+        $widget = new MailingSystemWidget;
         $method = new ReflectionMethod($widget, 'getStats');
         $stats = $method->invoke($widget);
 
         expect($stats)->toHaveCount(3);
-        
+
         expect($stats[0]->getLabel())->toBe('Emails Received (7 Days)');
         expect($stats[0]->getValue())->toBe(6);
 
