@@ -269,6 +269,39 @@ describe('DocumentProcessor', function () {
             expect($file->display_name)->toBe('HDFC Bank Jan 2025');
         });
 
+        it('preserves user-supplied display name and does not regenerate', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => \Carbon\Carbon::parse('2025-01-10'),
+            ]);
+            
+            // This explicitly simulates a manual user override that should NOT be touched
+            $file->update(['display_name' => 'My Custom Override']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            
+            // The display name should NOT update to 'HDFC Bank Jan 2025'
+            expect($file->display_name)->toBe('My Custom Override');
+        });
+
         it('routes credit card statement PDFs to StatementParser agent', function () {
             Storage::put('statements/cc.pdf', 'fake-pdf-content');
 

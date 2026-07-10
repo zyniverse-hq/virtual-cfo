@@ -81,17 +81,6 @@ describe('DisplayNameGenerator', function () {
         expect($name)->toBe('Feb 2025');
     });
 
-    it('uses user-supplied display_name as-is when provided', function () {
-        $file = new ImportedFile;
-        $file->forceFill([
-            'bank_name' => 'HDFC',
-            'statement_period' => 'Jan 2025',
-            'display_name' => 'My Custom Name',
-            'created_at' => now(),
-        ]);
-
-        expect($file->display_name)->toBe('My Custom Name');
-    });
 
     it('uses card_variant in display name when set and no credit card relationship', function () {
         $file = new ImportedFile;
