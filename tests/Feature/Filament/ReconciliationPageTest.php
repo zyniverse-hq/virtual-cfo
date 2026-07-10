@@ -130,12 +130,40 @@ describe('Reconciliation Page', function () {
         livewire(ListReconciliation::class)
             ->callTableAction('run_reconciliation', data: [
                 'bank_file_id' => $bankFile->id,
-                'invoice_file_id' => $invoiceFile->id,
+                'invoice_file_ids' => [$invoiceFile->id],
             ]);
 
         Queue::assertPushed(ReconcileImportedFiles::class, function ($job) use ($bankFile, $invoiceFile) {
             return $job->bankFile->id === $bankFile->id
                 && $job->invoiceFile->id === $invoiceFile->id;
+        });
+    });
+
+    it('dispatches reconciliation job with multiple invoice files', function () {
+        Queue::fake();
+
+        $bankFile = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Bank,
+        ]);
+
+        $invoiceFile1 = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Invoice,
+        ]);
+
+        $invoiceFile2 = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Invoice,
+        ]);
+
+        livewire(ListReconciliation::class)
+            ->callTableAction('run_reconciliation', data: [
+                'bank_file_id' => $bankFile->id,
+                'invoice_file_ids' => [$invoiceFile1->id, $invoiceFile2->id],
+            ]);
+
+        Queue::assertPushed(ReconcileImportedFiles::class, function ($job) use ($bankFile, $invoiceFile1, $invoiceFile2) {
+            return $job->bankFile->id === $bankFile->id
+                && $job->invoiceFiles->pluck('id')->contains($invoiceFile1->id)
+                && $job->invoiceFiles->pluck('id')->contains($invoiceFile2->id);
         });
     });
 

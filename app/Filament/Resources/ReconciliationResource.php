@@ -279,8 +279,9 @@ class ReconciliationResource extends Resource
                             ->searchable()
                             ->required(),
 
-                        Select::make('invoice_file_id')
-                            ->label('Invoice File')
+                        Select::make('invoice_file_ids')
+                            ->label('Invoice File(s)')
+                            ->multiple()
                             ->options(function () {
                                 /** @var Company $company */
                                 $company = Filament::getTenant();
@@ -299,14 +300,16 @@ class ReconciliationResource extends Resource
                     ->action(function (array $data) {
                         /** @var ImportedFile $bankFile */
                         $bankFile = ImportedFile::findOrFail($data['bank_file_id']);
-                        /** @var ImportedFile $invoiceFile */
-                        $invoiceFile = ImportedFile::findOrFail($data['invoice_file_id']);
+                        $invoiceFiles = ImportedFile::whereIn('id', $data['invoice_file_ids'])->get();
 
-                        ReconcileImportedFiles::dispatch($bankFile, $invoiceFile);
+                        ReconcileImportedFiles::dispatch($bankFile, $invoiceFiles);
+
+                        $count = $invoiceFiles->count();
+                        $fileLabel = $count === 1 ? '1 invoice file' : "{$count} invoice files";
 
                         Notification::make()
                             ->title('Reconciliation job dispatched')
-                            ->body("Matching {$bankFile->original_filename} against {$invoiceFile->original_filename}")
+                            ->body("Matching {$bankFile->original_filename} against {$fileLabel}")
                             ->success()
                             ->send();
                     }),
