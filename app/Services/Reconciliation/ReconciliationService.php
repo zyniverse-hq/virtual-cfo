@@ -2,6 +2,7 @@
 
 namespace App\Services\Reconciliation;
 
+use App\Enums\ImportSource;
 use App\Enums\MatchMethod;
 use App\Enums\MatchStatus;
 use App\Enums\ReconciliationStatus;
@@ -19,6 +20,12 @@ use Illuminate\Support\Facades\Log;
  */
 class ReconciliationService
 {
+    /**
+     * Minimum confidence score (0-1) required to automatically confirm matches
+     * for invoices received via email.
+     */
+    public const AUTO_CONFIRM_EMAIL_THRESHOLD = 0.90;
+
     /**
      * Default tolerance for amount matching (in currency units).
      * Allows for minor rounding differences.
@@ -488,13 +495,27 @@ class ReconciliationService
             ->flip();
 
         $suggestionsCreated = 0;
+        /** @var Collection<int, int> $confirmedInvoiceIds */
+        $confirmedInvoiceIds = collect();
+        $emailInvoiceFileIds = $invoiceFilesCollection
+            ->filter(fn (ImportedFile $file) => $file->source === ImportSource::Email)
+            ->pluck('id')
+            ->flip();
 
         foreach ($bankTransactions as $bankTxn) {
             if ($alreadySuggestedIds->has($bankTxn->id)) {
                 continue;
             }
 
-            $candidates = $this->findCandidates($bankTxn, $invoiceTransactions);
+            $availableInvoices = $invoiceTransactions->reject(
+                fn (Transaction $inv) => $confirmedInvoiceIds->contains($inv->id)
+            );
+
+            if ($availableInvoices->isEmpty()) {
+                break;
+            }
+
+            $candidates = $this->findCandidates($bankTxn, $availableInvoices);
 
             if (empty($candidates)) {
                 continue;
@@ -502,13 +523,27 @@ class ReconciliationService
 
             // Create suggestion for the best candidate
             $best = $candidates[0];
-            $this->createMatch(
+            $match = $this->createMatch(
                 $bankTxn,
                 $best['invoice'],
                 $best['confidence'],
                 $best['method'],
                 MatchStatus::Suggested,
             );
+
+            $isEmailInvoice = $emailInvoiceFileIds->has($best['invoice']->imported_file_id);
+            if ($isEmailInvoice && $best['confidence'] >= self::AUTO_CONFIRM_EMAIL_THRESHOLD) {
+                $this->confirmSuggestion($match);
+                $confirmedInvoiceIds->push($best['invoice']->id);
+
+                Log::info('Email invoice match auto-confirmed', [
+                    'match_id' => $match->id,
+                    'bank_transaction_id' => $bankTxn->id,
+                    'invoice_transaction_id' => $best['invoice']->id,
+                    'confidence' => $best['confidence'],
+                ]);
+            }
+
             $suggestionsCreated++;
         }
 

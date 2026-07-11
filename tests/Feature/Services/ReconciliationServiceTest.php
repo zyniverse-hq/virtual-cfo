@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ImportSource;
 use App\Enums\MatchMethod;
 use App\Enums\MatchStatus;
 use App\Enums\ReconciliationStatus;
@@ -893,6 +894,171 @@ describe('ReconciliationService', function () {
             $match->refresh();
             expect($match->status)->toBe(MatchStatus::Rejected)
                 ->and($match->notes)->toBe('Wrong vendor');
+        });
+    });
+
+    describe('auto-confirm email invoice matches', function () {
+        it('auto-confirms high confidence matches for invoices received via email', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+                'raw_data' => [
+                    'vendor_name' => 'Assetpro Solution Pvt Ltd',
+                    'invoice_number' => 'ASPL/2439',
+                ],
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->status)->toBe(MatchStatus::Confirmed);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
+                ->and($bankTxn->raw_data)->toHaveKey('reconciled_invoice_id', $invoiceTxn->id)
+                ->and($bankTxn->raw_data)->toHaveKey('vendor_name', 'Assetpro Solution Pvt Ltd');
+        });
+
+        it('does not auto-confirm matches below 90% confidence for email invoices', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Some Different Vendor Name',
+                'date' => '2025-05-30', // Date is far away so date confidence drops, bringing total confidence below 0.90
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->confidence)->toBeLessThan(0.90)
+                ->and($match->status)->toBe(MatchStatus::Suggested);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('does not auto-confirm high confidence matches for non-email invoices', function () {
+            $manualInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::ManualUpload,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $manualInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($manualInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->confidence)->toBeGreaterThanOrEqual(0.90)
+                ->and($match->status)->toBe(MatchStatus::Suggested);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('prevents double matching against an already auto-confirmed email invoice in the same run', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            // Two bank transactions with identical amount matching the same invoice
+            $bankTxn1 = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $bankTxn2 = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-16',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            // Only 1 match should be created (for the first bank transaction), because after it confirms, the invoice is no longer available
+            expect($count)->toBe(1)
+                ->and(ReconciliationMatch::count())->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match->status)->toBe(MatchStatus::Confirmed)
+                ->and($match->bank_transaction_id)->toBe($bankTxn1->id)
+                ->and($match->invoice_transaction_id)->toBe($invoiceTxn->id);
         });
     });
 
