@@ -38,6 +38,10 @@ class SetTenantForJob
             return $job->bankFile->company_id;
         }
 
+        if (isset($job->scheduledExport)) {
+            return $job->scheduledExport->company_id;
+        }
+
         return null;
     }
 }
