@@ -43,7 +43,7 @@ return [
         [
             'title' => 'Row Actions',
             'description' => 'Each row has actions: Download the original file, Re-process if parsing failed, or Set Password for locked PDFs. Look for the "..." menu on each row.',
-            'element' => '.fi-ta-actions:first-of-type',
+            'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
         ],
         [
             'title' => 'Filter by Status',
@@ -127,7 +127,7 @@ return [
         [
             'title' => 'Test Before Applying',
             'description' => 'Each rule has a "Test Rule" action in the row menu. It shows how many existing transactions would match — use it to verify your pattern before relying on it.',
-            'element' => '.fi-ta-actions:first-of-type',
+            'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
         ],
         [
             'title' => 'Match Types',
@@ -160,7 +160,7 @@ return [
         [
             'title' => 'Review Matches',
             'description' => 'Green "Confirm" buttons appear on rows with suggestions. Click to accept. Use "Match Invoice" to manually link a transaction. "Reject All" clears bad suggestions.',
-            'element' => '.fi-ta-actions:first-of-type',
+            'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
         ],
     ],
 ];
