@@ -52,8 +52,8 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
         - Extract the account holder name (individual or company name) from the statement header. Set it as `account_holder_name`. Leave null if not found.
         - For each transaction, extract: date, description, debit, credit, and running balance
         - Return each transaction date exactly as it appears in the source document (e.g. "10/03/2026", "05-Apr-2026", "17/03/2026"). Do NOT reformat or convert dates.
-        - CRITICAL RULE FOR SINGLE-COLUMN AMOUNTS: If both charges and refunds are in a single "Amount" column, an amount with a "CR" suffix or minus sign (e.g. "9,148.42 CR" or "-9148.42") is a refund/payment and MUST be placed in the `credit` field. Amounts with no suffix or a "DR" suffix are standard charges and MUST be placed in the `debit` field. Do NOT guess based on the description.
-        - Strip any minus signs, "CR" or "DR" suffixes, currency symbols, and commas when extracting amounts. The final values in the debit and credit fields must be purely positive absolute numbers.
+        - CRITICAL RULE FOR SINGLE-COLUMN AMOUNTS: If both charges and refunds are in a single "Amount" column, an amount with a "CR" suffix (e.g. "9,148.42 CR") is a refund/payment and MUST be placed in the `credit` field. Amounts with no suffix or a "DR" suffix are standard charges and MUST be placed in the `debit` field. Do NOT guess based on the description.
+        - Strip "CR" or "DR" suffixes, currency symbols, and commas when extracting amounts. The final values in the debit and credit fields must be purely positive absolute numbers.
         - If a field is not present, use null
         - Extract reference numbers where available
         - Handle multi-line transaction descriptions by concatenating them
