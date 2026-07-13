@@ -9,6 +9,8 @@ use App\Filament\Resources\TransactionResource;
 use App\Filament\Resources\TransactionResource\Pages\ListTransactions;
 use App\Jobs\MatchTransactionHeads;
 use App\Models\AccountHead;
+use App\Models\BankAccount;
+use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\ReconciliationMatch;
 use App\Models\Transaction;
@@ -255,5 +257,71 @@ describe('TransactionResource', function () {
         $invoiceTxn->refresh();
         expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
             ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched);
+    });
+
+    it('can filter by bank account id using statement type subfilter', function () {
+        $bankAccount1 = BankAccount::factory()->create();
+        $bankAccount2 = BankAccount::factory()->create();
+
+        $bankFile1 = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_account_id' => $bankAccount1->id,
+        ]);
+        $bankFile2 = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_account_id' => $bankAccount2->id,
+        ]);
+        $t1 = Transaction::factory()->for($bankFile1, 'importedFile')->create();
+        $t2 = Transaction::factory()->for($bankFile2, 'importedFile')->create();
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::Bank->value,
+                'bank_account_id' => $bankAccount1->id,
+            ])
+            ->assertCanSeeTableRecords([$t1])
+            ->assertCanNotSeeTableRecords([$t2]);
+    });
+
+    it('can filter by credit card id using statement type subfilter', function () {
+        $card1 = CreditCard::factory()->create();
+        $card2 = CreditCard::factory()->create();
+
+        $cardFile1 = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card1->id,
+        ]);
+        $cardFile2 = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card2->id,
+        ]);
+        $t1 = Transaction::factory()->for($cardFile1, 'importedFile')->create();
+        $t2 = Transaction::factory()->for($cardFile2, 'importedFile')->create();
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => $card1->id,
+            ])
+            ->assertCanSeeTableRecords([$t1])
+            ->assertCanNotSeeTableRecords([$t2]);
+    });
+
+    it('normalizeStatementType correctly processes enums and objects', function () {
+        $reflection = new ReflectionClass(TransactionResource::class);
+        $method = $reflection->getMethod('normalizeStatementType');
+        $method->setAccessible(true);
+
+        // Enum
+        expect($method->invoke(null, StatementType::Bank))->toBe(StatementType::Bank->value);
+
+        // stdClass with value property (what Filament hydration sometimes passes)
+        expect($method->invoke(null, (object) ['value' => StatementType::CreditCard->value]))->toBe(StatementType::CreditCard->value);
+
+        // String
+        expect($method->invoke(null, StatementType::Invoice->value))->toBe(StatementType::Invoice->value);
+
+        // Null
+        expect($method->invoke(null, null))->toBeNull();
     });
 });

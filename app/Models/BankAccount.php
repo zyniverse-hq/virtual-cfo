@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\ImportStatus;
 use App\Jobs\ProcessImportedFile;
 use Database\Factories\BankAccountFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -89,5 +90,14 @@ class BankAccount extends Model
     public function importedFiles(): HasMany
     {
         return $this->hasMany(ImportedFile::class);
+    }
+
+    /**
+     * @param  Builder<BankAccount>  $query
+     * @return Builder<BankAccount>
+     */
+    public function scopeVisibleToCompany(Builder $query, int $companyId): Builder
+    {
+        return $query->where('company_id', $companyId);
     }
 }

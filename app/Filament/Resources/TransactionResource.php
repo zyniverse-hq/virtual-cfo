@@ -128,7 +128,12 @@ class TransactionResource extends Resource
 
                         Forms\Components\Select::make('credit_card_id')
                             ->label('Credit Card')
-                            ->options(fn () => CreditCard::pluck('name', 'id'))
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? CreditCard::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
                             ->visible(function ($get) {
                                 $val = self::normalizeStatementType($get('value'));
 
@@ -138,7 +143,12 @@ class TransactionResource extends Resource
 
                         Forms\Components\Select::make('bank_account_id')
                             ->label('Bank Account')
-                            ->options(fn () => BankAccount::pluck('name', 'id'))
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? BankAccount::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
                             ->visible(function ($get) {
                                 $val = self::normalizeStatementType($get('value'));
 
