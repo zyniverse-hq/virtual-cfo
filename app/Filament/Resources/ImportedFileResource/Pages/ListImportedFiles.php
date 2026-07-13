@@ -2,14 +2,16 @@
 
 namespace App\Filament\Resources\ImportedFileResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\ImportedFileResource;
 use App\Filament\Widgets\ImportedFileStatsOverview;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListImportedFiles extends ListRecords
 {
+    use HasPageTour;
+
     protected static string $resource = ImportedFileResource::class;
 
     public function getSubheading(): ?string
@@ -20,13 +22,7 @@ class ListImportedFiles extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
@@ -39,6 +35,6 @@ class ListImportedFiles extends ListRecords
 
     public function getFooter(): ?View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'imported-files']);
+        return $this->getPageTourFooter('imported-files');
     }
 }
