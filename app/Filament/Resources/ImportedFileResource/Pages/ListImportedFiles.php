@@ -2,15 +2,15 @@
 
 namespace App\Filament\Resources\ImportedFileResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\ImportedFileResource;
 use App\Filament\Widgets\ImportedFileStatsOverview;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListImportedFiles extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = ImportedFileResource::class;
 

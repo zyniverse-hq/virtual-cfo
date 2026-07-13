@@ -2,15 +2,15 @@
 
 namespace App\Filament\Resources\ReconciliationResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\ReconciliationResource;
 use App\Filament\Widgets\ReconciliationStatsOverview;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListReconciliation extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = ReconciliationResource::class;
 

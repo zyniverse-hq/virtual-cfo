@@ -4,6 +4,7 @@ namespace App\Filament\Resources\TransactionResource\Pages;
 
 use App\Enums\MappingType;
 use App\Enums\MatchType;
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\TransactionResource;
 use App\Filament\Widgets\TransactionStatsOverview;
 use App\Models\AccountHead;
@@ -25,7 +26,7 @@ use Livewire\Attributes\On;
 
 class ListTransactions extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = TransactionResource::class;
 

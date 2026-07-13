@@ -2,15 +2,15 @@
 
 namespace App\Filament\Resources\AccountHeadResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\AccountHeadResource;
 use Filament\Actions;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListAccountHeads extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = AccountHeadResource::class;
 

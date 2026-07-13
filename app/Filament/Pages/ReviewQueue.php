@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\MappingType;
+use App\Filament\Concerns\HasPageTour;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\Transaction;
@@ -19,15 +20,16 @@ use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
 {
+    use HasPageTour;
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
-    use \App\Filament\Concerns\HasPageTour;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
@@ -46,7 +48,7 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
         ];
     }
 
-    public function getFooter(): ?\Illuminate\Contracts\View\View
+    public function getFooter(): ?View
     {
         return $this->getPageTourFooter('review-queue');
     }

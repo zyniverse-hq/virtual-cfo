@@ -2,15 +2,15 @@
 
 namespace App\Filament\Resources\HeadMappingResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\HeadMappingResource;
 use Filament\Actions;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListHeadMappings extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = HeadMappingResource::class;
 

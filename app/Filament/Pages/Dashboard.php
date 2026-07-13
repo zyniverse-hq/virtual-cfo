@@ -2,14 +2,14 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Actions\Action;
+use App\Filament\Concerns\HasPageTour;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 
 class Dashboard extends BaseDashboard
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     public function getHeading(): string
     {

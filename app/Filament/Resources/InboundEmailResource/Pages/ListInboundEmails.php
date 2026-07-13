@@ -2,19 +2,22 @@
 
 namespace App\Filament\Resources\InboundEmailResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\InboundEmailResource;
+use App\Filament\Widgets\MailingSystemWidget;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Contracts\View\View;
 
 class ListInboundEmails extends ListRecords
 {
-    use \App\Filament\Concerns\HasPageTour;
+    use HasPageTour;
 
     protected static string $resource = InboundEmailResource::class;
 
     protected function getHeaderWidgets(): array
     {
         return [
-            \App\Filament\Widgets\MailingSystemWidget::class,
+            MailingSystemWidget::class,
         ];
     }
 
@@ -25,7 +28,7 @@ class ListInboundEmails extends ListRecords
         ];
     }
 
-    public function getFooter(): ?\Illuminate\Contracts\View\View
+    public function getFooter(): ?View
     {
         return $this->getPageTourFooter('inbound-emails');
     }
