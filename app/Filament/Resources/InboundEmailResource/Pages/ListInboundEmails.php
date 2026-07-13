@@ -11,6 +11,13 @@ class ListInboundEmails extends ListRecords
 
     protected static string $resource = InboundEmailResource::class;
 
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            \App\Filament\Widgets\MailingSystemWidget::class,
+        ];
+    }
+
     protected function getHeaderActions(): array
     {
         return [

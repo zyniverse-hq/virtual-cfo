@@ -10,6 +10,8 @@ use Illuminate\Contracts\View\View;
 
 class ListHeadMappings extends ListRecords
 {
+    use \App\Filament\Concerns\HasPageTour;
+
     protected static string $resource = HeadMappingResource::class;
 
     protected function getHeaderActions(): array
@@ -18,18 +20,12 @@ class ListHeadMappings extends ListRecords
             Actions\CreateAction::make()
                 ->icon('heroicon-o-plus')
                 ->extraAttributes(['class' => 'tour-create-rule']),
-            Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
     public function getFooter(): ?View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'head-mappings']);
+        return $this->getPageTourFooter('head-mappings');
     }
 }

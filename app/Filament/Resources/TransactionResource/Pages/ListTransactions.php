@@ -25,6 +25,8 @@ use Livewire\Attributes\On;
 
 class ListTransactions extends ListRecords
 {
+    use \App\Filament\Concerns\HasPageTour;
+
     protected static string $resource = TransactionResource::class;
 
     public function getSubheading(): ?string
@@ -35,13 +37,7 @@ class ListTransactions extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
 
             Action::make('suggestRule')
                 ->label('Create Mapping Rule')
@@ -123,7 +119,7 @@ class ListTransactions extends ListRecords
 
     public function getFooter(): ?View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'transactions']);
+        return $this->getPageTourFooter('transactions');
     }
 
     /** @param array<string, mixed> $data */
