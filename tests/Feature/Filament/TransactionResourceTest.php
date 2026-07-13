@@ -10,6 +10,7 @@ use App\Filament\Resources\TransactionResource\Pages\ListTransactions;
 use App\Jobs\MatchTransactionHeads;
 use App\Models\AccountHead;
 use App\Models\BankAccount;
+use App\Models\Company;
 use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\ReconciliationMatch;
@@ -260,19 +261,39 @@ describe('TransactionResource', function () {
     });
 
     it('can filter by bank account id using statement type subfilter', function () {
-        $bankAccount1 = BankAccount::factory()->create();
-        $bankAccount2 = BankAccount::factory()->create();
+        $tenantId = tenant()->id;
+
+        $bankAccount1 = BankAccount::factory()->create(['company_id' => $tenantId]);
+        $bankAccount2 = BankAccount::factory()->create(['company_id' => $tenantId]);
 
         $bankFile1 = ImportedFile::factory()->create([
             'statement_type' => StatementType::Bank,
             'bank_account_id' => $bankAccount1->id,
+            'company_id' => $tenantId,
         ]);
         $bankFile2 = ImportedFile::factory()->create([
             'statement_type' => StatementType::Bank,
             'bank_account_id' => $bankAccount2->id,
+            'company_id' => $tenantId,
         ]);
-        $t1 = Transaction::factory()->for($bankFile1, 'importedFile')->create();
-        $t2 = Transaction::factory()->for($bankFile2, 'importedFile')->create();
+        $t1 = Transaction::factory()->for($bankFile1, 'importedFile')->create([
+            'company_id' => $tenantId,
+        ]);
+        $t2 = Transaction::factory()->for($bankFile2, 'importedFile')->create([
+            'company_id' => $tenantId,
+        ]);
+
+        // Foreign company records — should be invisible due to Filament tenant scoping
+        $foreignCompany = Company::factory()->create();
+        $foreignBankAccount = BankAccount::factory()->create(['company_id' => $foreignCompany->id]);
+        $foreignBankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_account_id' => $foreignBankAccount->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+        $foreignT = Transaction::factory()->for($foreignBankFile, 'importedFile')->create([
+            'company_id' => $foreignCompany->id,
+        ]);
 
         livewire(ListTransactions::class)
             ->filterTable('statement_type', [
@@ -280,23 +301,44 @@ describe('TransactionResource', function () {
                 'bank_account_id' => $bankAccount1->id,
             ])
             ->assertCanSeeTableRecords([$t1])
-            ->assertCanNotSeeTableRecords([$t2]);
+            ->assertCanNotSeeTableRecords([$t2])
+            ->assertCanNotSeeTableRecords([$foreignT]);
     });
 
     it('can filter by credit card id using statement type subfilter', function () {
-        $card1 = CreditCard::factory()->create();
-        $card2 = CreditCard::factory()->create();
+        $tenantId = tenant()->id;
+
+        $card1 = CreditCard::factory()->create(['company_id' => $tenantId]);
+        $card2 = CreditCard::factory()->create(['company_id' => $tenantId]);
 
         $cardFile1 = ImportedFile::factory()->create([
             'statement_type' => StatementType::CreditCard,
             'credit_card_id' => $card1->id,
+            'company_id' => $tenantId,
         ]);
         $cardFile2 = ImportedFile::factory()->create([
             'statement_type' => StatementType::CreditCard,
             'credit_card_id' => $card2->id,
+            'company_id' => $tenantId,
         ]);
-        $t1 = Transaction::factory()->for($cardFile1, 'importedFile')->create();
-        $t2 = Transaction::factory()->for($cardFile2, 'importedFile')->create();
+        $t1 = Transaction::factory()->for($cardFile1, 'importedFile')->create([
+            'company_id' => $tenantId,
+        ]);
+        $t2 = Transaction::factory()->for($cardFile2, 'importedFile')->create([
+            'company_id' => $tenantId,
+        ]);
+
+        // Foreign company records — should be invisible due to Filament tenant scoping
+        $foreignCompany = Company::factory()->create();
+        $foreignCard = CreditCard::factory()->create(['company_id' => $foreignCompany->id]);
+        $foreignCardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $foreignCard->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+        $foreignT = Transaction::factory()->for($foreignCardFile, 'importedFile')->create([
+            'company_id' => $foreignCompany->id,
+        ]);
 
         livewire(ListTransactions::class)
             ->filterTable('statement_type', [
@@ -304,7 +346,8 @@ describe('TransactionResource', function () {
                 'credit_card_id' => $card1->id,
             ])
             ->assertCanSeeTableRecords([$t1])
-            ->assertCanNotSeeTableRecords([$t2]);
+            ->assertCanNotSeeTableRecords([$t2])
+            ->assertCanNotSeeTableRecords([$foreignT]);
     });
 
     it('normalizeStatementType correctly processes enums and objects', function () {
