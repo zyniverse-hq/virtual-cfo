@@ -29,27 +29,38 @@ class AccountHead extends Model
     protected static function booted(): void
     {
         static::deleting(function (AccountHead $head) {
-            $count = $head->getMappedTransactionCount();
-            if ($count > 0) {
+            if ($head->getLinkedRecordsCount() > 0) {
                 throw ValidationException::withMessages([
-                    'base' => $head->getDeletionErrorMessage($count),
+                    'base' => $head->getDeletionErrorMessage(),
                 ]);
             }
         });
     }
 
-    public function getMappedTransactionCount(): int
+    public function getLinkedRecordsCount(): int
     {
-        return $this->transactions()->count();
+        return $this->transactions()->count() + $this->headMappings()->count();
     }
 
-    public function getDeletionErrorMessage(int $count): string
+    public function getDeletionErrorMessage(): string
     {
-        $label = $count === 1
-            ? '1 transaction is mapped to this head. Reassign it first.'
-            : "{$count} transactions are mapped to this head. Reassign them first.";
+        $transactionsCount = $this->transactions()->count();
+        $rulesCount = $this->headMappings()->count();
 
-        return "Cannot delete — {$label}";
+        $parts = [];
+        if ($transactionsCount > 0) {
+            $parts[] = $transactionsCount === 1 ? '1 transaction' : "{$transactionsCount} transactions";
+        }
+        if ($rulesCount > 0) {
+            $parts[] = $rulesCount === 1 ? '1 rule' : "{$rulesCount} rules";
+        }
+
+        $label = implode(' and ', $parts);
+        $totalCount = $transactionsCount + $rulesCount;
+        $verb = $totalCount === 1 ? 'is' : 'are';
+        $pronoun = $totalCount === 1 ? 'it' : 'them';
+
+        return "Cannot delete — {$label} {$verb} mapped to this head. Reassign {$pronoun} first.";
     }
 
     public function getActivitylogOptions(): LogOptions
