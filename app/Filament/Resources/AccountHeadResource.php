@@ -13,6 +13,7 @@ use BackedEnum;
 use Closure;
 use Filament\Actions;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -27,8 +28,10 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Unique;
+use Illuminate\Validation\ValidationException;
 use UnitEnum;
 
 class AccountHeadResource extends Resource
@@ -138,7 +141,7 @@ class AccountHeadResource extends Resource
                         ->pluck('group_name', 'group_name')),
             ])
             ->actions([
-                self::customizeDeleteAction(Actions\EditAction::make()), // Wait, Edit is Edit.
+                Actions\EditAction::make(),
                 self::customizeDeleteAction(Actions\DeleteAction::make()),
                 self::customizeDeleteAction(Actions\ForceDeleteAction::make(), true),
                 Actions\RestoreAction::make(),
@@ -255,7 +258,7 @@ class AccountHeadResource extends Resource
             ->action(self::tallyImportAction());
     }
 
-    public static function customizeDeleteAction(Action|Tables\Actions\Action $action, bool $force = false): Action|Tables\Actions\Action
+    public static function customizeDeleteAction(mixed $action, bool $force = false): mixed
     {
         return $action
             ->form(function (AccountHead $record) {
@@ -282,6 +285,7 @@ class AccountHeadResource extends Resource
                     Forms\Components\Select::make('replacement_head_id')
                         ->label('New Account Head')
                         ->options(fn () => AccountHead::query()
+                            ->where('company_id', Filament::getTenant()?->getKey())
                             ->where('id', '!=', $record->id)
                             ->pluck('name', 'id')
                         )
@@ -293,40 +297,64 @@ class AccountHeadResource extends Resource
             ->action(function (AccountHead $record, array $data, mixed $action) use ($force) {
                 if (isset($data['reassign_choice'])) {
                     if ($data['reassign_choice'] === 'manual') {
-                        redirect()->to(TransactionResource::getUrl('index', [
+                        $url = TransactionResource::getUrl('index', [
                             'tableFilters' => [
                                 'account_head_id' => ['value' => (string) $record->id],
                             ],
                             'filters' => [
                                 'account_head_id' => ['value' => (string) $record->id],
                             ],
-                        ]));
+                        ]);
+                        $action->getLivewire()->redirect($url);
+                        $action->halt();
 
-                        $action->cancel();
+                        return;
+                    }
+                }
+
+                try {
+                    DB::beginTransaction();
+
+                    if (isset($data['reassign_choice']) && $data['reassign_choice'] === 'bulk') {
+                        $replacementId = $data['replacement_head_id'];
+                        foreach ($record->transactions()->get() as $t) {
+                            $t->update(['account_head_id' => $replacementId]);
+                        }
+                        $record->headMappings()->update(['account_head_id' => $replacementId]);
+                    }
+
+                    $result = $action->process(static fn (AccountHead $record) => $force ? $record->forceDelete() : $record->delete());
+
+                    if (! $result) {
+                        DB::rollBack();
+                        $action->failure();
 
                         return;
                     }
 
-                    if ($data['reassign_choice'] === 'bulk') {
-                        $replacementId = $data['replacement_head_id'];
-                        $record->transactions()->update(['account_head_id' => $replacementId]);
-                        $record->headMappings()->update(['account_head_id' => $replacementId]);
-                    }
-                }
+                    DB::commit();
+                    $action->success();
+                } catch (ValidationException $e) {
+                    DB::rollBack();
 
-                $result = $action->process(static fn (AccountHead $record) => $force ? $record->forceDelete() : $record->delete());
+                    $message = collect($e->errors())->flatten()->first() ?: $e->getMessage();
+                    Notification::make()
+                        ->danger()
+                        ->title($message)
+                        ->send();
 
-                if (! $result) {
                     $action->failure();
-
-                    return;
+                } catch (\Throwable $e) {
+                    DB::rollBack();
+                    throw $e;
                 }
-
-                $action->success();
             });
     }
 
-    public static function validateBulkDeletion(Collection $records, \Filament\Actions\BulkAction $action): void
+    /**
+     * @param  Collection<int, AccountHead>  $records
+     */
+    public static function validateBulkDeletion(Collection $records, BulkAction $action): void
     {
         $transactionCounts = Transaction::whereIn('account_head_id', $records->pluck('id'))
             ->selectRaw('account_head_id, count(*) as count')
