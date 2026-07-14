@@ -384,35 +384,78 @@ describe('HeadMatcherService::resolveAccountHead()', function () {
         expect($result)->toBeNull();
     });
 
-    it('name fallback normalizes whitespace in suggested_head_name before querying', function () {
-        $head = AccountHead::factory()->create(['name' => 'Internet Expense']);
-        $service = new HeadMatcherService(new RuleBasedMatcher);
+    it('name fallback normalizes trailing newline in suggested_head_name before querying', function () {
+        $company = Company::factory()->create();
+        $head = AccountHead::factory()->create([
+            'company_id' => $company->id,
+            'name' => 'Internet Expense',
+            'is_active' => true,
+        ]);
 
-        $method = new ReflectionMethod($service, 'resolveAccountHead');
+        $file = ImportedFile::factory()->create(['company_id' => $company->id]);
+        $transaction = Transaction::factory()->unmapped()->for($file)->create([
+            'description' => 'MONTHLY INTERNET BILL',
+            'debit' => '999',
+        ]);
 
-        // LLM returns the name with a trailing newline — ID is wrong to force the name fallback
-        $result = $method->invoke($service, [
-            'suggested_head_id' => 99999,
-            'suggested_head_name' => "Internet Expense\n",
-        ], $head->company_id);
+        // LLM returns the name with a trailing newline — wrong ID forces the name-fallback path
+        HeadMatcher::fake([
+            [
+                'matches' => [
+                    [
+                        'transaction_id' => $transaction->id,
+                        'suggested_head_id' => 99999,
+                        'suggested_head_name' => "Internet Expense\n",
+                        'confidence' => 0.90,
+                        'reasoning' => 'Internet bill',
+                    ],
+                ],
+            ],
+        ]);
 
-        expect($result)->not->toBeNull()
-            ->and($result->id)->toBe($head->id);
+        $service = app(HeadMatcherService::class);
+        $results = $service->matchForFile($file);
+
+        expect($results['ai_matched'])->toBe(1);
+        $transaction->refresh();
+        expect($transaction->account_head_id)->toBe($head->id);
     });
 
-    it('name fallback normalizes double internal spaces in suggested_head_name', function () {
-        $head = AccountHead::factory()->create(['name' => 'Godaddy - Subscription']);
-        $service = new HeadMatcherService(new RuleBasedMatcher);
+    it('name fallback normalizes double internal spaces in suggested_head_name before querying', function () {
+        $company = Company::factory()->create();
+        $head = AccountHead::factory()->create([
+            'company_id' => $company->id,
+            'name' => 'Godaddy - Subscription',
+            'is_active' => true,
+        ]);
 
-        $method = new ReflectionMethod($service, 'resolveAccountHead');
+        $file = ImportedFile::factory()->create(['company_id' => $company->id]);
+        $transaction = Transaction::factory()->unmapped()->for($file)->create([
+            'description' => 'GODADDY DOMAIN RENEWAL',
+            'debit' => '1499',
+        ]);
 
-        $result = $method->invoke($service, [
-            'suggested_head_id' => 99999,
-            'suggested_head_name' => 'Godaddy  - Subscription',
-        ], $head->company_id);
+        // LLM returns double space — wrong ID forces the name-fallback path
+        HeadMatcher::fake([
+            [
+                'matches' => [
+                    [
+                        'transaction_id' => $transaction->id,
+                        'suggested_head_id' => 99999,
+                        'suggested_head_name' => 'Godaddy  - Subscription',
+                        'confidence' => 0.88,
+                        'reasoning' => 'Domain subscription',
+                    ],
+                ],
+            ],
+        ]);
 
-        expect($result)->not->toBeNull()
-            ->and($result->id)->toBe($head->id);
+        $service = app(HeadMatcherService::class);
+        $results = $service->matchForFile($file);
+
+        expect($results['ai_matched'])->toBe(1);
+        $transaction->refresh();
+        expect($transaction->account_head_id)->toBe($head->id);
     });
 });
 
