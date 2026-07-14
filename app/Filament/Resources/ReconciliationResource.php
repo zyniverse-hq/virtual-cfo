@@ -127,14 +127,16 @@ class ReconciliationResource extends Resource
                     ->color('danger')
                     ->requiresConfirmation()
                     ->action(function (Transaction $record) {
-                        app(ReconciliationService::class)->rejectAllSuggestions($record);
+                        app(ReconciliationService::class)->rejectAllMatches($record);
 
                         Notification::make()
                             ->title('All suggestions rejected')
                             ->warning()
                             ->send();
                     })
-                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank
+                        ->whereIn('status', [MatchStatus::Suggested, MatchStatus::Confirmed])
+                        ->isNotEmpty()),
 
                 Actions\ActionGroup::make([
                     Actions\Action::make('manual_match')
@@ -211,7 +213,7 @@ class ReconciliationResource extends Resource
                             $service = app(ReconciliationService::class);
 
                             /** @var Collection<int, Transaction> $records */
-                            $records->each(fn (Transaction $record) => $service->rejectAllSuggestions($record));
+                            $records->each(fn (Transaction $record) => $service->rejectAllMatches($record));
                         })
                         ->deselectRecordsAfterCompletion(),
                 ]),

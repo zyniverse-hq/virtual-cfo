@@ -856,7 +856,7 @@ describe('ReconciliationService', function () {
         });
     });
 
-    describe('rejectAllSuggestions', function () {
+    describe('rejectAllMatches', function () {
         it('rejects a confirmed match and reverts both transactions to unreconciled', function () {
             $bankTxn = Transaction::factory()->debit(5000)->create([
                 'imported_file_id' => $this->bankFile->id,
@@ -872,7 +872,7 @@ describe('ReconciliationService', function () {
                 'invoice_transaction_id' => $invoiceTxn->id,
             ]);
 
-            $count = $this->service->rejectAllSuggestions($bankTxn);
+            $count = $this->service->rejectAllMatches($bankTxn);
 
             $match->refresh();
             $bankTxn->refresh();
@@ -899,7 +899,7 @@ describe('ReconciliationService', function () {
                 'invoice_transaction_id' => $invoiceTxn->id,
             ]);
 
-            $count = $this->service->rejectAllSuggestions($bankTxn);
+            $count = $this->service->rejectAllMatches($bankTxn);
 
             $match->refresh();
             $bankTxn->refresh();
@@ -915,7 +915,7 @@ describe('ReconciliationService', function () {
                 'reconciliation_status' => ReconciliationStatus::Unreconciled,
             ]);
 
-            $count = $this->service->rejectAllSuggestions($bankTxn);
+            $count = $this->service->rejectAllMatches($bankTxn);
 
             expect($count)->toBe(0)
                 ->and($bankTxn->fresh()->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);

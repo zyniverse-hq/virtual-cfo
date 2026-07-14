@@ -238,9 +238,14 @@ describe('Reconciliation Page', function () {
         $bankTxn->refresh();
         expect($match->status)->toBe(MatchStatus::Confirmed)
             ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched);
+
+        // After confirmation: confirm button hidden, reject button remains visible (can unmatch)
+        livewire(ListReconciliation::class)
+            ->assertTableActionHidden('confirm_suggestion', $bankTxn)
+            ->assertTableActionVisible('reject_suggestions', $bankTxn);
     });
 
-    it('hides confirm and reject buttons once the match is no longer suggested', function () {
+    it('hides confirm button but keeps reject button visible for a confirmed match', function () {
         $bankFile = ImportedFile::factory()->completed()->create([
             'statement_type' => StatementType::Bank,
         ]);
@@ -262,7 +267,41 @@ describe('Reconciliation Page', function () {
 
         livewire(ListReconciliation::class)
             ->assertTableActionHidden('confirm_suggestion', $bankTxn)
-            ->assertTableActionHidden('reject_suggestions', $bankTxn);
+            ->assertTableActionVisible('reject_suggestions', $bankTxn);
+    });
+
+    it('can reject a confirmed match via table action and revert transactions to unreconciled', function () {
+        $bankFile = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Bank,
+        ]);
+        $invoiceFile = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Invoice,
+        ]);
+
+        $bankTxn = Transaction::factory()->debit(5000.00)->create([
+            'imported_file_id' => $bankFile->id,
+            'reconciliation_status' => ReconciliationStatus::Matched,
+        ]);
+        $invoiceTxn = Transaction::factory()->debit(5000.00)->create([
+            'imported_file_id' => $invoiceFile->id,
+            'reconciliation_status' => ReconciliationStatus::Matched,
+        ]);
+
+        $match = ReconciliationMatch::factory()->confirmed()->create([
+            'bank_transaction_id' => $bankTxn->id,
+            'invoice_transaction_id' => $invoiceTxn->id,
+        ]);
+
+        livewire(ListReconciliation::class)
+            ->callTableAction('reject_suggestions', $bankTxn);
+
+        $match->refresh();
+        $bankTxn->refresh();
+        $invoiceTxn->refresh();
+
+        expect($match->status)->toBe(MatchStatus::Rejected)
+            ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+            ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
     });
 
     it('can reject all suggestions for a bank transaction via table action', function () {
