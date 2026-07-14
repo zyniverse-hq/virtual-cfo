@@ -181,14 +181,14 @@ class TransactionsRelationManager extends RelationManager
                             $tenant = Filament::getTenant();
 
                             try {
-                                HeadMapping::create([
+                                DB::transaction(fn () => HeadMapping::create([
                                     'pattern' => $data['pattern'],
                                     'match_type' => $data['match_type'],
                                     'account_head_id' => $data['account_head_id'],
                                     'bank_name' => $data['bank_name'] ?: null,
                                     'company_id' => $tenant?->id,
                                     'created_by' => Auth::id(),
-                                ]);
+                                ]));
                             } catch (UniqueConstraintViolationException) {
                                 Notification::make()
                                     ->danger()
