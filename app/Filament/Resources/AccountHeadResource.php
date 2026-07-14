@@ -275,10 +275,20 @@ class AccountHeadResource extends Resource
 
                     Forms\Components\Radio::make('reassign_choice')
                         ->label('How would you like to handle them?')
-                        ->options([
-                            'bulk' => 'Reassign all linked records to another Account Head',
-                            'manual' => 'Review and reassign them manually',
-                        ])
+                        ->options(function (AccountHead $record) {
+                            $options = [
+                                'bulk' => 'Reassign all linked records to another Account Head',
+                            ];
+
+                            $hasTransactions = $record->transactions()->exists();
+                            $hasRules = $record->headMappings()->exists();
+
+                            if (! ($hasTransactions && $hasRules)) {
+                                $options['manual'] = 'Review and reassign them manually';
+                            }
+
+                            return $options;
+                        })
                         ->live()
                         ->required(),
 
@@ -297,14 +307,28 @@ class AccountHeadResource extends Resource
             ->action(function (AccountHead $record, array $data, mixed $action) use ($force) {
                 if (isset($data['reassign_choice'])) {
                     if ($data['reassign_choice'] === 'manual') {
-                        $url = TransactionResource::getUrl('index', [
-                            'tableFilters' => [
-                                'account_head_id' => ['value' => (string) $record->id],
-                            ],
-                            'filters' => [
-                                'account_head_id' => ['value' => (string) $record->id],
-                            ],
-                        ]);
+                        $hasTransactions = $record->transactions()->exists();
+                        $hasRules = $record->headMappings()->exists();
+
+                        if ($hasRules && ! $hasTransactions) {
+                            $url = HeadMappingResource::getUrl('index', [
+                                'tableFilters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                                'filters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                            ]);
+                        } else {
+                            $url = TransactionResource::getUrl('index', [
+                                'tableFilters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                                'filters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                            ]);
+                        }
                         $action->getLivewire()->redirect($url);
                         $action->halt();
 
@@ -317,6 +341,18 @@ class AccountHeadResource extends Resource
 
                     if (isset($data['reassign_choice']) && $data['reassign_choice'] === 'bulk') {
                         $replacementId = $data['replacement_head_id'];
+
+                        $replacementHead = AccountHead::query()
+                            ->where('company_id', Filament::getTenant()?->getKey())
+                            ->where('id', '!=', $record->id)
+                            ->find($replacementId);
+
+                        if (! $replacementHead) {
+                            throw ValidationException::withMessages([
+                                'replacement_head_id' => 'Invalid replacement account head selected.',
+                            ]);
+                        }
+
                         foreach ($record->transactions()->get() as $t) {
                             $t->update(['account_head_id' => $replacementId]);
                         }
