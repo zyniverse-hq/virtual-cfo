@@ -15,7 +15,7 @@ use Laravel\Ai\Promptable;
 use Stringable;
 
 #[Provider('openrouter')]
-#[MaxTokens(8192)]
+#[MaxTokens(32768)]
 #[Temperature(0.1)]
 #[Timeout(300)]
 class StatementParser implements Agent, HasMiddleware, HasStructuredOutput

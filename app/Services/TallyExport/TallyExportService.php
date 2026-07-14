@@ -118,6 +118,16 @@ class TallyExportService
         $this->voucherCounters = [];
         $companyName = $company?->name ?? '';
 
+        // Pre-decrypt the first transaction's raw_data once for isAllMastersExport().
+        // This avoids a redundant Crypt::decrypt() call since generateVoucher() will
+        // decrypt the same value again for each transaction in the loop below.
+        /** @var Transaction|null $firstTransaction */
+        $firstTransaction = $transactions->first();
+        /** @var array<string, mixed>|null $firstRaw */
+        $firstRaw = $firstTransaction !== null && $importedFile?->statement_type === StatementType::Invoice
+            ? ($firstTransaction->raw_data ?? [])
+            : null;
+
         $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
         $xml .= '<ENVELOPE>'."\n";
         $xml .= '  <HEADER>'."\n";
@@ -126,7 +136,7 @@ class TallyExportService
         $xml .= '  <BODY>'."\n";
         $xml .= '    <IMPORTDATA>'."\n";
         $xml .= '      <REQUESTDESC>'."\n";
-        $reportName = $this->isAllMastersExport($transactions, $importedFile) ? 'All Masters' : 'Vouchers';
+        $reportName = $this->isAllMastersExport($transactions, $importedFile, $firstRaw) ? 'All Masters' : 'Vouchers';
         $xml .= '        <REPORTNAME>'.$reportName.'</REPORTNAME>'."\n";
         $xml .= '        <STATICVARIABLES>'."\n";
         $xml .= '          <SVCURRENTCOMPANY>'.$this->escapeXml($companyName).'</SVCURRENTCOMPANY>'."\n";
@@ -164,10 +174,10 @@ class TallyExportService
             $raw = $transaction->raw_data ?? [];
 
             if (isset($raw['buyer_name'])) {
-                return $this->generateSalesVoucher($transaction, $company);
+                return $this->generateSalesVoucher($transaction, $company, $raw);
             }
 
-            return $this->generateInvoiceJournalVoucher($transaction, $company);
+            return $this->generateInvoiceJournalVoucher($transaction, $company, $raw);
         }
 
         $isDebit = $transaction->debit !== null;
@@ -218,8 +228,10 @@ class TallyExportService
     /**
      * Generate a Journal voucher for an invoice transaction with GST breakup.
      * Multi-leg: expense debit, CGST/SGST (or IGST) debits, TDS credit (optional), vendor party credit.
+     *
+     * @param  array<string, mixed>  $raw  Pre-decrypted raw_data for the transaction
      */
-    private function generateInvoiceJournalVoucher(Transaction $transaction, ?Company $company): string
+    private function generateInvoiceJournalVoucher(Transaction $transaction, ?Company $company, array $raw): string
     {
         /** @var Carbon $transactionDate */
         $transactionDate = $transaction->date;
@@ -228,9 +240,6 @@ class TallyExportService
         $accountHead = $transaction->accountHead;
         $headName = $accountHead?->name ?? 'Unknown';
         $voucherNumber = $this->nextVoucherNumber('Journal');
-
-        /** @var array<string, mixed> $raw */
-        $raw = $transaction->raw_data ?? [];
         $vendorName = (string) ($raw['vendor_name'] ?? 'Unknown Vendor');
         $vendorGstin = (string) ($raw['vendor_gstin'] ?? '');
         $invoiceNumber = (string) ($raw['invoice_number'] ?? '');
@@ -305,14 +314,14 @@ class TallyExportService
     /**
      * Generate a Sales voucher for an outward (sales) invoice.
      * Multi-leg: customer party debit, sales revenue credit, Output GST credits.
+     *
+     * @param  array<string, mixed>  $raw  Pre-decrypted raw_data for the transaction
      */
-    private function generateSalesVoucher(Transaction $transaction, ?Company $company): string
+    private function generateSalesVoucher(Transaction $transaction, ?Company $company, array $raw): string
     {
         /** @var Carbon $transactionDate */
         $transactionDate = $transaction->date;
 
-        /** @var array<string, mixed> $raw */
-        $raw = $transaction->raw_data ?? [];
         $invoiceDateRaw = (string) ($raw['invoice_date'] ?? '');
         $date = $invoiceDateRaw !== ''
             ? Carbon::parse($invoiceDateRaw)->format('Ymd')
@@ -622,8 +631,9 @@ class TallyExportService
      * Sales invoices and bank/CC journal exports both use Vouchers.
      *
      * @param  Collection<int, Transaction>  $transactions
+     * @param  array<string, mixed>|null  $firstRaw  Pre-decrypted raw_data for the first transaction (avoids redundant decryption)
      */
-    private function isAllMastersExport(Collection $transactions, ?ImportedFile $importedFile): bool
+    private function isAllMastersExport(Collection $transactions, ?ImportedFile $importedFile, ?array $firstRaw = null): bool
     {
         if ($importedFile?->statement_type !== StatementType::Invoice) {
             return false;
@@ -637,7 +647,7 @@ class TallyExportService
         }
 
         /** @var array<string, mixed> $raw */
-        $raw = $first->raw_data ?? [];
+        $raw = $firstRaw ?? ($first->raw_data ?? []);
 
         return ! isset($raw['buyer_name']);
     }

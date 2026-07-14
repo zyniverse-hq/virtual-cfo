@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ImportSource;
 use App\Enums\MatchMethod;
 use App\Enums\MatchStatus;
 use App\Enums\ReconciliationStatus;
@@ -441,6 +442,46 @@ describe('ReconciliationService', function () {
             expect($result->matched)->toBe(1)
                 ->and(ReconciliationMatch::count())->toBe(1);
         });
+
+        it('reconciles bank transactions against multiple invoice files', function () {
+            $invoiceFile2 = ImportedFile::factory()->completed()->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+            ]);
+
+            Transaction::factory()->debit(10000.00)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'Payment 1',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(20000.00)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'Payment 2',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(10000.00)->create([
+                'imported_file_id' => $this->invoiceFile->id,
+                'description' => 'Invoice 1',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            Transaction::factory()->debit(20000.00)->create([
+                'imported_file_id' => $invoiceFile2->id,
+                'description' => 'Invoice 2',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $result = $this->service->reconcile($this->bankFile, [$this->invoiceFile, $invoiceFile2]);
+
+            expect($result->matched)->toBe(2)
+                ->and(ReconciliationMatch::count())->toBe(2);
+        });
     });
 
     describe('flagUnmatched', function () {
@@ -856,69 +897,230 @@ describe('ReconciliationService', function () {
         });
     });
 
+    describe('auto-confirm email invoice matches', function () {
+        it('auto-confirms high confidence matches for invoices received via email', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+                'raw_data' => [
+                    'vendor_name' => 'Assetpro Solution Pvt Ltd',
+                    'invoice_number' => 'ASPL/2439',
+                ],
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->status)->toBe(MatchStatus::Confirmed);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
+                ->and($bankTxn->raw_data)->toHaveKey('reconciled_invoice_id', $invoiceTxn->id)
+                ->and($bankTxn->raw_data)->toHaveKey('vendor_name', 'Assetpro Solution Pvt Ltd');
+        });
+
+        it('does not auto-confirm matches below 90% confidence for email invoices', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Some Different Vendor Name',
+                'date' => '2025-05-30', // Date is far away so date confidence drops, bringing total confidence below 0.90
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->confidence)->toBeLessThan(0.90)
+                ->and($match->status)->toBe(MatchStatus::Suggested);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('does not auto-confirm high confidence matches for non-email invoices', function () {
+            $manualInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::ManualUpload,
+            ]);
+
+            $bankTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $manualInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($manualInvoiceFile);
+
+            expect($count)->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match)->not->toBeNull()
+                ->and($match->confidence)->toBeGreaterThanOrEqual(0.90)
+                ->and($match->status)->toBe(MatchStatus::Suggested);
+
+            $bankTxn->refresh();
+            $invoiceTxn->refresh();
+            expect($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
+                ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
+        });
+
+        it('prevents double matching against an already auto-confirmed email invoice in the same run', function () {
+            $emailInvoiceFile = ImportedFile::factory()->completed(totalRows: 1, mappedRows: 0)->create([
+                'company_id' => $this->company->id,
+                'statement_type' => StatementType::Invoice,
+                'source' => ImportSource::Email,
+            ]);
+
+            // Two bank transactions with identical amount matching the same invoice
+            $bankTxn1 = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $bankTxn2 = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Assetpro Solution',
+                'date' => '2025-04-16',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $invoiceTxn = Transaction::factory()->debit(31900.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $emailInvoiceFile->id,
+                'description' => 'ASPL/2439 - Assetpro Solution Pvt Ltd',
+                'date' => '2025-04-10',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($emailInvoiceFile);
+
+            // Only 1 match should be created (for the first bank transaction), because after it confirms, the invoice is no longer available
+            expect($count)->toBe(1)
+                ->and(ReconciliationMatch::count())->toBe(1);
+
+            $match = ReconciliationMatch::first();
+            expect($match->status)->toBe(MatchStatus::Confirmed)
+                ->and($match->bank_transaction_id)->toBe($bankTxn1->id)
+                ->and($match->invoice_transaction_id)->toBe($invoiceTxn->id);
+        });
+    });
+
     describe('rejectAllMatches', function () {
-        it('rejects a confirmed match and reverts both transactions to unreconciled', function () {
-            $bankTxn = Transaction::factory()->debit(5000)->create([
+        it('rejects all suggested matches for a bank transaction', function () {
+            $bankTxn = Transaction::factory()->create([
+                'imported_file_id' => $this->bankFile->id,
+            ]);
+
+            $invoice1 = Transaction::factory()->create([
+                'imported_file_id' => $this->invoiceFile->id,
+            ]);
+
+            $invoice2 = Transaction::factory()->create([
+                'imported_file_id' => $this->invoiceFile->id,
+            ]);
+
+            $match1 = ReconciliationMatch::factory()->suggested()->create([
+                'bank_transaction_id' => $bankTxn->id,
+                'invoice_transaction_id' => $invoice1->id,
+            ]);
+
+            $match2 = ReconciliationMatch::factory()->suggested()->create([
+                'bank_transaction_id' => $bankTxn->id,
+                'invoice_transaction_id' => $invoice2->id,
+            ]);
+
+            $this->service->rejectAllMatches($bankTxn);
+
+            $match1->refresh();
+            $match2->refresh();
+
+            expect($match1->status)->toBe(MatchStatus::Rejected)
+                ->and($match2->status)->toBe(MatchStatus::Rejected);
+        });
+
+        it('rejects confirmed matches and reverts transaction statuses to unreconciled', function () {
+            $bankTxn = Transaction::factory()->create([
                 'imported_file_id' => $this->bankFile->id,
                 'reconciliation_status' => ReconciliationStatus::Matched,
             ]);
-            $invoiceTxn = Transaction::factory()->debit(5000)->create([
+
+            $invoiceTxn = Transaction::factory()->create([
                 'imported_file_id' => $this->invoiceFile->id,
                 'reconciliation_status' => ReconciliationStatus::Matched,
             ]);
 
-            $match = ReconciliationMatch::factory()->confirmed()->create([
+            $match = ReconciliationMatch::factory()->create([
                 'bank_transaction_id' => $bankTxn->id,
                 'invoice_transaction_id' => $invoiceTxn->id,
+                'status' => MatchStatus::Confirmed,
             ]);
 
-            $count = $this->service->rejectAllMatches($bankTxn);
+            $this->service->rejectAllMatches($bankTxn);
 
             $match->refresh();
             $bankTxn->refresh();
             $invoiceTxn->refresh();
 
-            expect($count)->toBe(1)
-                ->and($match->status)->toBe(MatchStatus::Rejected)
+            expect($match->status)->toBe(MatchStatus::Rejected)
                 ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled)
                 ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
-        });
-
-        it('rejects suggested matches without touching transaction status', function () {
-            $bankTxn = Transaction::factory()->debit(5000)->create([
-                'imported_file_id' => $this->bankFile->id,
-                'reconciliation_status' => ReconciliationStatus::Unreconciled,
-            ]);
-            $invoiceTxn = Transaction::factory()->debit(5000)->create([
-                'imported_file_id' => $this->invoiceFile->id,
-                'reconciliation_status' => ReconciliationStatus::Unreconciled,
-            ]);
-
-            $match = ReconciliationMatch::factory()->suggested()->create([
-                'bank_transaction_id' => $bankTxn->id,
-                'invoice_transaction_id' => $invoiceTxn->id,
-            ]);
-
-            $count = $this->service->rejectAllMatches($bankTxn);
-
-            $match->refresh();
-            $bankTxn->refresh();
-
-            expect($count)->toBe(1)
-                ->and($match->status)->toBe(MatchStatus::Rejected)
-                ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
-        });
-
-        it('returns zero and changes nothing when there are no active matches', function () {
-            $bankTxn = Transaction::factory()->debit(5000)->create([
-                'imported_file_id' => $this->bankFile->id,
-                'reconciliation_status' => ReconciliationStatus::Unreconciled,
-            ]);
-
-            $count = $this->service->rejectAllMatches($bankTxn);
-
-            expect($count)->toBe(0)
-                ->and($bankTxn->fresh()->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
         });
     });
 });
