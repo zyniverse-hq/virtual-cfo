@@ -57,7 +57,10 @@ class ReconciliationService
         $result = new ReconciliationResult;
 
         $bankTransactions = $bankFile->transactions()
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->whereIn('reconciliation_status', [
+                ReconciliationStatus::Unreconciled,
+                ReconciliationStatus::Flagged,
+            ])
             ->get();
 
         $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
@@ -67,7 +70,10 @@ class ReconciliationService
         $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
 
         $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->whereIn('reconciliation_status', [
+                ReconciliationStatus::Unreconciled,
+                ReconciliationStatus::Flagged,
+            ])
             ->get();
 
         if ($bankTransactions->isEmpty() || $invoiceTransactions->isEmpty()) {
@@ -464,20 +470,26 @@ class ReconciliationService
         $companyId = $invoiceFilesCollection->first()->company_id;
         $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
 
-        // Get all unreconciled invoice transactions from these files
+        // Get all unreconciled or flagged invoice transactions from these files
         /** @var Collection<int, Transaction> $invoiceTransactions */
         $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->whereIn('reconciliation_status', [
+                ReconciliationStatus::Unreconciled,
+                ReconciliationStatus::Flagged,
+            ])
             ->get();
 
         if ($invoiceTransactions->isEmpty()) {
             return 0;
         }
 
-        // Get all unreconciled bank/CC transactions for this company
+        // Get all unreconciled or flagged bank/CC transactions for this company
         $bankTransactions = Transaction::query()
             ->where('company_id', $companyId)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->whereIn('reconciliation_status', [
+                ReconciliationStatus::Unreconciled,
+                ReconciliationStatus::Flagged,
+            ])
             ->whereHas('importedFile', fn ($q) => $q->whereIn('statement_type', [
                 StatementType::Bank,
                 StatementType::CreditCard,
