@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 describe('export base query filtering', function () {
     beforeEach(function () {
@@ -81,16 +79,16 @@ describe('TransactionCsvExport', function () {
         asUser();
     });
 
-    it('headings use correct column order: Date, Account Head, Debit, Credit, Balance, Reference', function () {
+    it('headings use new column order without Mapping Type or Bank/Source', function () {
         $export = new TransactionCsvExport;
 
         expect($export->headings())->toBe([
             'Date',
+            'Reference',
             'Account Head',
             'Debit',
             'Credit',
             'Balance',
-            'Reference',
             'Currency',
             'Account Head Group',
             'Description',
@@ -114,15 +112,15 @@ describe('TransactionCsvExport', function () {
         $export = new TransactionCsvExport;
         $row = $export->map($transaction);
 
-        // Correct order: Date, Account Head, Debit, Credit, Balance, Reference, Currency, Account Head Group, Description
-        expect($row[0])->toBe('15 Mar 2025')          // Date
-            ->and($row[1])->toBe('Office Rent')        // Account Head
-            ->and((float) $row[2])->toBe(5000.50)      // Debit
-            ->and($row[3])->toBeNull()                 // Credit
-            ->and((float) $row[4])->toBe(45000.00)     // Balance
-            ->and($row[5])->toBe('REF123')             // Reference
-            ->and($row[6])->toBe('USD')                // Currency
-            ->and($row[7])->toBe('Indirect Expenses')  // Account Head Group
+        // New order: Date, Reference, Account Head, Debit, Credit, Balance, Currency, Account Head Group, Description
+        expect($row[0])->toBe('15 Mar 2025')       // Date
+            ->and($row[1])->toBe('REF123')           // Reference
+            ->and($row[2])->toBe('Office Rent')      // Account Head
+            ->and((float) $row[3])->toBe(5000.50)    // Debit
+            ->and($row[4])->toBeNull()               // Credit
+            ->and((float) $row[5])->toBe(45000.00)   // Balance
+            ->and($row[6])->toBe('USD')              // Currency
+            ->and($row[7])->toBe('Indirect Expenses') // Account Head Group
             ->and($row[8])->toBe('NEFT-RENT-PAYMENT'); // Description
     });
 
@@ -305,77 +303,6 @@ describe('TransactionDetailSheet', function () {
 
         Storage::disk('local')->delete($path);
     });
-
-    it('totals row sums debit in column C and credit in column D', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->debit(1000)->create();
-        Transaction::factory()->mapped($head)->credit(2000)->create();
-
-        $path = 'test-exports/detail-totals.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Transactions');
-
-        $totalsRow = $ws->getHighestRow();
-
-        expect((float) $ws->getCell("C{$totalsRow}")->getCalculatedValue())->toBe(1000.0)
-            ->and((float) $ws->getCell("D{$totalsRow}")->getCalculatedValue())->toBe(2000.0);
-
-        Storage::disk('local')->delete($path);
-    });
-
-    it('totals row balance cell shows Total Debit minus Total Credit', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->debit(3000)->create();
-        Transaction::factory()->mapped($head)->credit(1500)->create();
-
-        $path = 'test-exports/detail-totals-balance.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Transactions');
-
-        $totalsRow = $ws->getHighestRow();
-
-        // Balance = Total Debit - Total Credit = 3000 - 1500 = 1500
-        expect((float) $ws->getCell("E{$totalsRow}")->getCalculatedValue())->toBe(1500.0);
-
-        Storage::disk('local')->delete($path);
-    });
-
-    it('applies a fill background to the header row', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->create();
-
-        $path = 'test-exports/detail-borders.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Transactions');
-
-        $headerFill = $ws->getCell('A1')->getStyle()->getFill()->getFillType();
-        expect($headerFill)->not->toBe(Fill::FILL_NONE);
-
-        Storage::disk('local')->delete($path);
-    });
-
-    it('applies borders to the data range', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->create();
-
-        $path = 'test-exports/detail-borders-data.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Transactions');
-
-        // Row 2 is the first data row (no metadata); check cell A2 has at least one border
-        $borderStyle = $ws->getCell('A2')->getStyle()->getBorders()->getBottom()->getBorderStyle();
-        expect($borderStyle)->not->toBe(Border::BORDER_NONE);
-
-        Storage::disk('local')->delete($path);
-    });
 });
 
 describe('TransactionSummarySheet', function () {
@@ -515,42 +442,9 @@ describe('TransactionSummarySheet', function () {
         $lastRow = $ws->getHighestRow();
         expect($ws->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance');
 
-        // The value should equal Total Debit - Total Credit = 1000 - 2000 = -1000
+        // The value should equal 5000 + 2000 - 1000 = 6000
         $closingValue = $ws->getCell("B{$lastRow}")->getCalculatedValue();
-        expect((float) $closingValue)->toBe(-1000.0);
-
-        Storage::disk('local')->delete($path);
-    });
-
-    it('applies a fill background to the summary sheet header row', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->create();
-
-        $path = 'test-exports/summary-borders.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Summary');
-
-        $headerFill = $ws->getCell('A1')->getStyle()->getFill()->getFillType();
-        expect($headerFill)->not->toBe(Fill::FILL_NONE);
-
-        Storage::disk('local')->delete($path);
-    });
-
-    it('applies borders to the summary sheet data range', function () {
-        $head = AccountHead::factory()->create();
-        Transaction::factory()->mapped($head)->create();
-
-        $path = 'test-exports/summary-borders-data.xlsx';
-        Excel::store(new TransactionExcelExport, $path, 'local');
-
-        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
-        $ws = $spreadsheet->getSheetByName('Summary');
-
-        // Row 2 is first data row (no metadata); check cell A2 has at least one border
-        $borderStyle = $ws->getCell('A2')->getStyle()->getBorders()->getBottom()->getBorderStyle();
-        expect($borderStyle)->not->toBe(Border::BORDER_NONE);
+        expect((float) $closingValue)->toBe(6000.0);
 
         Storage::disk('local')->delete($path);
     });

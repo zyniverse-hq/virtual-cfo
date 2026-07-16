@@ -2,14 +2,11 @@
 
 namespace App\Exports;
 
-use App\Exports\Concerns\AppliesTableStyling;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 
 class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
 {
-    use AppliesTableStyling;
-
     public function title(): string
     {
         return 'Transactions';
@@ -34,19 +31,18 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                 $totalsRow = $lastDataRow + 1;
 
                 $sheet->getColumnDimension('A')->setWidth(14);
-                $sheet->getColumnDimension('B')->setWidth(28);
-                $sheet->getColumnDimension('C')->setWidth(15);
+                $sheet->getColumnDimension('B')->setWidth(18);
+                $sheet->getColumnDimension('C')->setWidth(28);
                 $sheet->getColumnDimension('D')->setWidth(15);
                 $sheet->getColumnDimension('E')->setWidth(15);
-                $sheet->getColumnDimension('F')->setWidth(18);
+                $sheet->getColumnDimension('F')->setWidth(15);
                 $sheet->getColumnDimension('G')->setWidth(12);
                 $sheet->getColumnDimension('H')->setWidth(22);
                 $sheet->getColumnDimension('I')->setWidth(45);
 
                 $sheet->setCellValue("A{$totalsRow}", 'Total');
-                $sheet->setCellValue("C{$totalsRow}", "=SUM(C{$dataStartRow}:C{$lastDataRow})");
                 $sheet->setCellValue("D{$totalsRow}", "=SUM(D{$dataStartRow}:D{$lastDataRow})");
-                $sheet->setCellValue("E{$totalsRow}", "=C{$totalsRow}-D{$totalsRow}");
+                $sheet->setCellValue("E{$totalsRow}", "=SUM(E{$dataStartRow}:E{$lastDataRow})");
 
                 $sheet->getStyle("{$headerRow}:{$headerRow}")->getFont()->setBold(true);
                 $sheet->getStyle("{$totalsRow}:{$totalsRow}")->getFont()->setBold(true);
@@ -54,8 +50,6 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                 for ($i = 1; $i <= $totalsRow; $i++) {
                     $sheet->getRowDimension($i)->setRowHeight(20);
                 }
-
-                $this->applyTableStyling($sheet, "A{$headerRow}:I{$totalsRow}", "A{$headerRow}:I{$headerRow}");
             },
         ];
     }
