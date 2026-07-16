@@ -608,9 +608,20 @@ class DocumentProcessor
 
         $dates = array_filter(array_column($transactions, 'date'));
         if (! empty($dates)) {
-            sort($dates);
+            $parsedDates = [];
+            foreach ($dates as $date) {
+                try {
+                    $parsedDates[] = $this->parseTransactionDate($date);
+                } catch (\Throwable) {
+                    // skip invalid dates
+                }
+            }
 
-            return Carbon::parse(reset($dates));
+            if (! empty($parsedDates)) {
+                usort($parsedDates, fn ($a, $b) => $a->timestamp <=> $b->timestamp);
+
+                return $parsedDates[0];
+            }
         }
 
         return now();
@@ -624,27 +635,33 @@ class DocumentProcessor
      */
     private function extractFirstDateFromPeriod(string $statementPeriod): ?string
     {
-        // MonthName DD, YYYY (e.g. "March 6, 2026") — full English month name, day-after
-        if (preg_match('/[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/', $statementPeriod, $m)) {
-            return $m[0];
+        $patterns = [
+            // MonthName DD, YYYY (e.g. "March 6, 2026") — full English month name, day-after
+            '/[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/',
+            // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
+            '/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/',
+            // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
+            '/\d{4}-\d{2}-\d{2}/',
+            // DD/MM/YYYY or DD-MM-YYYY (Indian numeric formats)
+            '/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/',
+        ];
+
+        $bestMatch = null;
+        $lowestOffset = -1;
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $statementPeriod, $m, PREG_OFFSET_CAPTURE)) {
+                $matchText = $m[0][0];
+                $offset = $m[0][1];
+
+                if ($lowestOffset === -1 || $offset < $lowestOffset) {
+                    $lowestOffset = $offset;
+                    $bestMatch = $matchText;
+                }
+            }
         }
 
-        // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
-        if (preg_match('/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/', $statementPeriod, $m)) {
-            return $m[0];
-        }
-
-        // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
-        if (preg_match('/\d{4}-\d{2}-\d{2}/', $statementPeriod, $m)) {
-            return $m[0];
-        }
-
-        // DD/MM/YYYY or DD-MM-YYYY (Indian numeric formats)
-        if (preg_match('/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/', $statementPeriod, $m)) {
-            return $m[0];
-        }
-
-        return null;
+        return $bestMatch;
     }
 
     /**
