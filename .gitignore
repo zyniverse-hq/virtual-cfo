@@ -3,7 +3,6 @@
 /.env
 /.env.backup
 /.env.production
-/.env.testing
 /storage/*.key
 /storage/app/private/*
 !/storage/app/private/statements/
