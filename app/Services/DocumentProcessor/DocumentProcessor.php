@@ -560,17 +560,19 @@ class DocumentProcessor
         $date = trim($date);
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
-        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $date, $m)) {
+        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})$/', $date, $m)) {
+            $year = strlen($m[3]) === 2 ? "20{$m[3]}" : $m[3];
             try {
-                return Carbon::createFromFormat('d/m/Y', "{$m[1]}/{$m[2]}/{$m[3]}");
+                return Carbon::createFromFormat('d/m/Y', "{$m[1]}/{$m[2]}/$year");
             } catch (\Exception) {
             }
         }
 
-        // DD-Mon-YYYY or DD Mon YYYY (e.g. "05-Apr-2026", "05 Apr 2026")
-        if (preg_match('/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-](\d{4})$/', $date)) {
+        // DD-Mon-YYYY or DD Mon YYYY (e.g. "05-Apr-2026", "05 Apr 24")
+        if (preg_match('/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-](\d{4}|\d{2})$/', $date, $m)) {
+            $year = strlen($m[3]) === 2 ? "20{$m[3]}" : $m[3];
             try {
-                return Carbon::createFromFormat('d M Y', preg_replace('/[\-]/', ' ', $date));
+                return Carbon::createFromFormat('d M Y', "{$m[1]} {$m[2]} $year");
             } catch (\Exception) {
             }
         }
@@ -636,14 +638,14 @@ class DocumentProcessor
     private function extractFirstDateFromPeriod(string $statementPeriod): ?string
     {
         $patterns = [
-            // MonthName DD, YYYY (e.g. "March 6, 2026") — full English month name, day-after
-            '/[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/',
-            // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
-            '/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/',
+            // MonthName DD, YYYY (e.g. "March 6, 2026" or "March 6, 24") — full English month name, day-after
+            '/[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:\d{4}|\d{2})/',
+            // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-24")
+            '/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-](?:\d{4}|\d{2})/',
             // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
             '/\d{4}-\d{2}-\d{2}/',
-            // DD/MM/YYYY or DD-MM-YYYY (Indian numeric formats)
-            '/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/',
+            // DD/MM/YYYY or DD-MM-YYYY (e.g. "01/04/2026", "01-04-24")
+            '/\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{4}|\d{2})/',
         ];
 
         $bestMatch = null;

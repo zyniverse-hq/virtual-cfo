@@ -996,6 +996,33 @@ describe('DocumentProcessor', function () {
             $transaction = Transaction::where('imported_file_id', $file->id)->first();
             expect($transaction->date->format('Y-m-d'))->toBe('2026-05-03');
         });
+
+        it('correctly parses dates with 2-digit years into 4-digit years', function () {
+            Storage::put('statements/two_digit_year.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'SBI',
+                    'statement_period' => 'May 2024',
+                    'transactions' => [
+                        ['date' => '15/01/24', 'description' => 'NEFT PAYMENT', 'debit' => 2000],
+                        ['date' => '15-Jan-24', 'description' => 'NEFT PAYMENT 2', 'debit' => 2000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/two_digit_year.pdf',
+                'original_filename' => 'sbi_two_digit.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->orderBy('id')->get();
+            expect($transactions[0]->date->format('Y-m-d'))->toBe('2024-01-15');
+            expect($transactions[1]->date->format('Y-m-d'))->toBe('2024-01-15');
+        });
     });
 
     describe('account_holder_name and opening_balance extraction', function () {
