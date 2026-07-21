@@ -261,6 +261,7 @@ class ReconciliationResource extends Resource
                     ->label('Run Reconciliation')
                     ->icon('heroicon-o-arrow-path')
                     ->color('primary')
+                    ->extraAttributes(['class' => 'tour-run-reconciliation'])
                     ->form([
                         Select::make('bank_file_id')
                             ->label('Bank / CC Statement File')
