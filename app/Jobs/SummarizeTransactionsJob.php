@@ -21,7 +21,7 @@ class SummarizeTransactionsJob implements ShouldQueue
     ) {}
 
     public function handle(): void
-    {000000
+    {
         // Get all transactions for this file that don't have a short_description yet
         // Chunk by 50 to avoid hitting token limits and keep it cost-efficient
         $this->file->transactions()
