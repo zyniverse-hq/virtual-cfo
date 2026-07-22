@@ -13,8 +13,8 @@ class EditAccountHead extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
-            Actions\ForceDeleteAction::make(),
+            AccountHeadResource::customizeDeleteAction(Actions\DeleteAction::make()),
+            AccountHeadResource::customizeDeleteAction(Actions\ForceDeleteAction::make(), true),
             Actions\RestoreAction::make(),
         ];
     }

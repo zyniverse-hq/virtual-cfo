@@ -4,6 +4,7 @@ use App\Models\AccountHead;
 use App\Models\Transaction;
 use App\Models\TransactionAggregate;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 
 describe('AccountHead soft deletes', function () {
     it('uses the SoftDeletes trait', function () {
@@ -57,6 +58,22 @@ describe('AccountHead soft deletes', function () {
 
         expect($newHead->exists)->toBeTrue();
     });
+
+    it('throws exception when deleting if transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->create(['account_head_id' => $head->id]);
+
+        expect(fn () => $head->delete())
+            ->toThrow(ValidationException::class);
+    });
+
+    it('throws exception when force deleting if transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->create(['account_head_id' => $head->id]);
+
+        expect(fn () => $head->forceDelete())
+            ->toThrow(ValidationException::class);
+    });
 });
 
 describe('AccountHead::fullPath', function () {
@@ -82,21 +99,25 @@ describe('AccountHead::fullPath', function () {
     });
 });
 
-describe('AccountHead soft-delete cascade', function () {
+describe('AccountHead deletion guard (replaces soft-delete cascade tests)', function () {
     beforeEach(function () {
         asUser();
     });
 
-    it('nulls account_head_id on mapped transactions when soft-deleted', function () {
+    it('preserves account_head_id on mapped transactions when delete is blocked', function () {
         $head = AccountHead::factory()->create();
         $txn = Transaction::factory()->mapped($head)->create();
 
-        $head->delete();
+        try {
+            $head->delete();
+        } catch (ValidationException) {
+            // expected
+        }
 
-        expect($txn->fresh()->account_head_id)->toBeNull();
+        expect($txn->fresh()->account_head_id)->toBe($head->id);
     });
 
-    it('updates TransactionAggregate when soft-deleting an account head', function () {
+    it('does not alter TransactionAggregate when delete is blocked', function () {
         $company = tenant();
         $head = AccountHead::factory()->create(['company_id' => $company->id]);
 
@@ -105,48 +126,42 @@ describe('AccountHead soft-delete cascade', function () {
             'date' => '2025-04-15',
         ]);
 
-        // Aggregate should have the head assigned
-        expect(TransactionAggregate::where('company_id', $company->id)
+        $aggregateBefore = TransactionAggregate::where('company_id', $company->id)
             ->where('account_head_id', $head->id)
-            ->exists()
-        )->toBeTrue();
+            ->exists();
+
+        try {
+            $head->delete();
+        } catch (ValidationException) {
+            // expected
+        }
+
+        $aggregateAfter = TransactionAggregate::where('company_id', $company->id)
+            ->where('account_head_id', $head->id)
+            ->exists();
+
+        expect($aggregateBefore)->toBe($aggregateAfter);
+    });
+
+    it('allows deletion when no transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
 
         $head->delete();
 
-        // Aggregate should now be under null head
-        expect(TransactionAggregate::where('company_id', $company->id)
-            ->where('account_head_id', $head->id)
-            ->exists()
-        )->toBeFalse()
-            ->and(TransactionAggregate::where('company_id', $company->id)
-                ->whereNull('account_head_id')
-                ->exists()
-            )->toBeTrue();
+        expect(AccountHead::find($head->id))->toBeNull();
+        expect(AccountHead::withTrashed()->find($head->id))->not->toBeNull();
     });
 
-    it('does not re-map transactions when an account head is restored', function () {
+    it('includes the transaction count in the error message', function () {
         $head = AccountHead::factory()->create();
-        $txn = Transaction::factory()->mapped($head)->create();
+        Transaction::factory()->mapped($head)->count(3)->create();
 
-        $head->delete();
-
-        // After soft-delete: transaction is unmapped
-        expect($txn->fresh()->account_head_id)->toBeNull();
-
-        $head->restore();
-
-        // After restore: transaction remains unmapped
-        expect($txn->fresh()->account_head_id)->toBeNull();
-    });
-
-    it('does not null transactions when force-deleted (DB cascade handles it)', function () {
-        $head = AccountHead::factory()->create();
-        $txn = Transaction::factory()->mapped($head)->create();
-
-        $head->forceDelete();
-
-        // DB nullOnDelete fires — transaction's account_head_id is nulled by PostgreSQL
-        expect($txn->fresh()->account_head_id)->toBeNull();
+        try {
+            $head->delete();
+            $this->fail('Expected ValidationException was not thrown');
+        } catch (ValidationException $e) {
+            expect($e->errors()['base'][0])->toContain('3 transactions are');
+        }
     });
 });
 

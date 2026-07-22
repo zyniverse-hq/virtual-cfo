@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use App\Services\AggregateService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -17,31 +17,6 @@ class AccountHead extends Model
     use LogsActivity;
     use SoftDeletes;
 
-    protected static function booted(): void
-    {
-        static::deleting(function (AccountHead $head) {
-            if (! $head->isForceDeleting()) {
-                $yearMonths = Transaction::where('account_head_id', $head->id)
-                    ->distinct()
-                    ->selectRaw("TO_CHAR(date, 'YYYY-MM') AS year_month")
-                    ->pluck('year_month');
-
-                if ($yearMonths->isEmpty()) {
-                    return;
-                }
-
-                Transaction::withoutEvents(function () use ($head) {
-                    $head->transactions()->update(['account_head_id' => null]);
-                });
-
-                $service = app(AggregateService::class);
-                foreach ($yearMonths as $yearMonth) {
-                    $service->rebuild($head->company_id, $yearMonth);
-                }
-            }
-        });
-    }
-
     protected $fillable = [
         'company_id',
         'name',
@@ -50,6 +25,43 @@ class AccountHead extends Model
         'group_name',
         'is_active',
     ];
+
+    protected static function booted(): void
+    {
+        static::deleting(function (AccountHead $head) {
+            if ($head->getLinkedRecordsCount() > 0) {
+                throw ValidationException::withMessages([
+                    'base' => $head->getDeletionErrorMessage(),
+                ]);
+            }
+        });
+    }
+
+    public function getLinkedRecordsCount(): int
+    {
+        return $this->transactions()->count() + $this->headMappings()->count();
+    }
+
+    public function getDeletionErrorMessage(): string
+    {
+        $transactionsCount = $this->transactions()->count();
+        $rulesCount = $this->headMappings()->count();
+
+        $parts = [];
+        if ($transactionsCount > 0) {
+            $parts[] = $transactionsCount === 1 ? '1 transaction' : "{$transactionsCount} transactions";
+        }
+        if ($rulesCount > 0) {
+            $parts[] = $rulesCount === 1 ? '1 rule' : "{$rulesCount} rules";
+        }
+
+        $label = implode(' and ', $parts);
+        $totalCount = $transactionsCount + $rulesCount;
+        $verb = $totalCount === 1 ? 'is' : 'are';
+        $pronoun = $totalCount === 1 ? 'it' : 'them';
+
+        return "Cannot delete — {$label} {$verb} mapped to this head. Reassign {$pronoun} first.";
+    }
 
     public function getActivitylogOptions(): LogOptions
     {

@@ -4,7 +4,9 @@ use App\Filament\Resources\AccountHeadResource;
 use App\Filament\Resources\AccountHeadResource\Pages\CreateAccountHead;
 use App\Filament\Resources\AccountHeadResource\Pages\EditAccountHead;
 use App\Filament\Resources\AccountHeadResource\Pages\ListAccountHeads;
+use App\Filament\Resources\TransactionResource;
 use App\Models\AccountHead;
+use App\Models\Transaction;
 
 use function Pest\Livewire\livewire;
 
@@ -214,5 +216,98 @@ describe('AccountHeadResource', function () {
             ->assertHasNoFormErrors();
 
         expect(AccountHead::where('name', 'Bank Charges')->count())->toBe(1);
+    });
+
+    it('blocks deletion of account head when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(3)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head)
+            ->assertHasTableActionErrors(['reassign_choice' => 'required']);
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
+
+    it('blocks force deletion of account head when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        $head->delete(); // Needs to be soft-deleted to run forceDelete action in most Filament setups
+        Transaction::factory()->mapped($head)->count(2)->create();
+
+        livewire(ListAccountHeads::class)
+            ->filterTable('trashed', true)
+            ->callTableAction('forceDelete', $head)
+            ->assertHasTableActionErrors(['reassign_choice' => 'required']);
+
+        expect(AccountHead::withTrashed()->find($head->id))->not->toBeNull();
+    });
+
+    it('redirects to manual reassignment when choosing manual on list page', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'manual',
+            ])
+            ->assertRedirect(TransactionResource::getUrl('index', [
+                'tableFilters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+                'filters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+            ]));
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
+
+    it('reassigns transactions and deletes account head when choosing bulk on list page', function () {
+        $head = AccountHead::factory()->create();
+        $head2 = AccountHead::factory()->create();
+        $transaction = Transaction::factory()->mapped($head)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'bulk',
+                'replacement_head_id' => $head2->id,
+            ])
+            ->assertSuccessful();
+
+        expect(AccountHead::find($head->id))->toBeNull();
+        expect($transaction->refresh()->account_head_id)->toBe($head2->id);
+    });
+
+    it('blocks bulk deletion of account heads when transactions are mapped', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
+        $head2 = AccountHead::factory()->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableBulkAction('delete', [$head, $head2])
+            ->assertNotified("Cannot bulk delete — '{$head->name}' because 1 transaction is mapped to it. Reassign it first.");
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+        expect(AccountHead::find($head2->id))->not->toBeNull();
+    });
+
+    it('redirects to manual reassignment when choosing manual on edit page', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
+
+        livewire(EditAccountHead::class, ['record' => $head->getRouteKey()])
+            ->callAction('delete', data: [
+                'reassign_choice' => 'manual',
+            ])
+            ->assertRedirect(TransactionResource::getUrl('index', [
+                'tableFilters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+                'filters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+            ]));
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
     });
 });
