@@ -8,6 +8,8 @@ use App\Models\InboundEmail;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
+use function Pest\Livewire\livewire;
+
 describe('MailingSystemWidget', function () {
     beforeEach(function () {
         asUser();
@@ -30,58 +32,64 @@ describe('MailingSystemWidget', function () {
         });
     });
 
-    it('shows correct counts and isolates tenant data', function () {
+    it('renders the three stat cards through the public component surface', function () {
+        livewire(MailingSystemWidget::class)
+            ->assertSuccessful()
+            ->assertSee('Emails Received (7 Days)')
+            ->assertSee('Rejected')
+            ->assertSee('No Attachments');
+    });
+
+    it('renders tenant-scoped counts and excludes other companies', function () {
         $company = tenant();
 
-        // Emails for the active company
+        // Active company — within the 7-day window.
         InboundEmail::factory()->count(2)->create([
             'company_id' => $company->id,
-            'received_at' => Carbon::now()->subDays(2), // within 7 days
+            'received_at' => Carbon::now()->subDays(2),
         ]);
 
+        // Active company — older than 7 days, excluded from the recent count.
         InboundEmail::factory()->create([
             'company_id' => $company->id,
-            'received_at' => Carbon::now()->subDays(10), // older than 7 days
+            'received_at' => Carbon::now()->subDays(10),
         ]);
 
+        // Active company — a single rejected email within the window.
         InboundEmail::factory()->create([
             'company_id' => $company->id,
             'received_at' => Carbon::now()->subDays(2),
             'status' => InboundEmailStatus::Rejected,
         ]);
 
+        // Active company — no-attachment emails within the window.
         InboundEmail::factory()->count(3)->create([
             'company_id' => $company->id,
             'received_at' => Carbon::now()->subDays(2),
             'status' => InboundEmailStatus::NoAttachments,
         ]);
 
-        // Other company emails (should be ignored completely)
+        // Another company — must be excluded entirely from every stat. If tenant
+        // scoping leaked, the rejected count would jump from 1 to 9.
         $otherCompany = Company::factory()->create();
-        InboundEmail::factory()->count(5)->create([
+        InboundEmail::factory()->count(8)->create([
             'company_id' => $otherCompany->id,
-            'received_at' => Carbon::now(),
+            'received_at' => Carbon::now()->subDays(2),
             'status' => InboundEmailStatus::Rejected,
         ]);
 
-        // Expected counts for active company:
-        // recentEmails = 2 + 1 + 3 = 6
-        // rejectedEmails = 1
-        // noAttachments = 3
-
-        $widget = new MailingSystemWidget;
-        $method = new ReflectionMethod($widget, 'getStats');
-        $stats = $method->invoke($widget);
-
-        expect($stats)->toHaveCount(3);
-
-        expect($stats[0]->getLabel())->toBe('Emails Received (7 Days)');
-        expect($stats[0]->getValue())->toBe(6);
-
-        expect($stats[1]->getLabel())->toBe('Rejected');
-        expect($stats[1]->getValue())->toBe(1);
-
-        expect($stats[2]->getLabel())->toBe('No Attachments');
-        expect($stats[2]->getValue())->toBe(3);
+        // Expected for the active company:
+        //   recent (any status, within 7 days) = 2 + 1 rejected + 3 no-attachment = 6
+        //   rejected (all time)                = 1
+        //   no attachments (all time)          = 3
+        livewire(MailingSystemWidget::class)
+            ->assertSuccessful()
+            ->assertSeeText('Emails Received (7 Days)')
+            ->assertSeeText('6')
+            ->assertSeeText('No Attachments')
+            ->assertSeeText('3')
+            ->assertSeeText('Rejected')
+            // The other company's 8 rejected emails must not leak into any stat.
+            ->assertDontSeeText('9');
     });
 });
