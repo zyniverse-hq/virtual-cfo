@@ -747,6 +747,11 @@ class DocumentProcessor
                 'bank_format' => $vendorName,
             ]);
 
+            // Reload the freshly created invoice transaction so the display-name
+            // generator reads its raw_data instead of the empty relation cached
+            // while $oldAutoName was computed above (before the transaction existed).
+            $file->load('transactions');
+
             $updates = [
                 'status' => ImportStatus::Completed,
                 'total_rows' => 1,

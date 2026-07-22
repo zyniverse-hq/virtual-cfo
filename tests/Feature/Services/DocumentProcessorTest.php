@@ -951,7 +951,7 @@ describe('DocumentProcessor', function () {
             $this->processor->process($file);
 
             $file->refresh();
-            expect($file->display_name)->toBe('ICICI Bank_Platinum_Mar_2026');
+            expect($file->display_name)->toBe('ICICI Bank Platinum Mar 2026');
         });
 
         it('preserves user-entered display_name after processing', function () {
