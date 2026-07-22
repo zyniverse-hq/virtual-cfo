@@ -8,7 +8,6 @@ use App\Filament\Resources\ImportedFileResource;
 use App\Jobs\ProcessImportedFile;
 use App\Models\Company;
 use App\Models\ImportedFile;
-use App\Services\DisplayNameGenerator;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -84,11 +83,6 @@ class CreateImportedFile extends CreateRecord
     {
         /** @var ImportedFile $record */
         $record = $this->record;
-
-        if (blank($record->display_name)) {
-            $record->load('creditCard');
-            $record->update(['display_name' => app(DisplayNameGenerator::class)->generate($record)]);
-        }
 
         ProcessImportedFile::dispatch($record);
     }

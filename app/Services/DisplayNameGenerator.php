@@ -35,15 +35,16 @@ class DisplayNameGenerator
         /** @var array<string, mixed>|null $raw */
         $raw = $firstTransaction?->raw_data;
 
+        $partyName = $this->stripCompanySuffix($raw['vendor_name'] ?? $raw['buyer_name'] ?? null)
+            ?? 'Invoice';
+
+        /** @var Carbon $txnDate */
+        $txnDate = $firstTransaction?->date ?? $file->created_at;
+        $month = $txnDate->format('M_Y');
+
         $invoiceNumber = $raw['invoice_number'] ?? null;
-        $buyerName = $this->stripCompanySuffix($raw['vendor_name'] ?? $raw['buyer_name'] ?? null);
-        $description = $this->shortenDescription($raw['line_items'][0]['description'] ?? null);
 
-        $parts = array_filter([$invoiceNumber, $buyerName, $description]);
-
-        if (empty($parts)) {
-            return $file->bank_name ?? 'Invoice';
-        }
+        $parts = array_filter([$partyName, $month, $invoiceNumber]);
 
         return implode('_', $parts);
     }
@@ -55,18 +56,6 @@ class DisplayNameGenerator
         }
 
         return trim(preg_replace('/\s+(?:Private Limited|Pvt\.?\s*Ltd\.?|Limited|Ltd\.?|LLP)\s*$/i', '', $name) ?? $name);
-    }
-
-    private function shortenDescription(?string $description): ?string
-    {
-        if (! $description) {
-            return null;
-        }
-
-        $primary = explode(' - ', $description)[0];
-        $words = array_values(array_filter(explode(' ', trim($primary))));
-
-        return implode(' ', array_slice($words, 0, 2));
     }
 
     private function resolvePeriod(ImportedFile $file): string
