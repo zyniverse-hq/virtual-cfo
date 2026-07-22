@@ -14,6 +14,8 @@ use Closure;
 use Filament\Actions;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\ForceDeleteAction;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -142,8 +144,8 @@ class AccountHeadResource extends Resource
             ])
             ->actions([
                 Actions\EditAction::make(),
-                self::customizeDeleteAction(Actions\DeleteAction::make()),
-                self::customizeDeleteAction(Actions\ForceDeleteAction::make(), true),
+                self::customizeDeleteAction(DeleteAction::make()),
+                self::customizeDeleteAction(ForceDeleteAction::make(), true),
                 Actions\RestoreAction::make(),
             ])
             ->bulkActions([
@@ -258,7 +260,7 @@ class AccountHeadResource extends Resource
             ->action(self::tallyImportAction());
     }
 
-    public static function customizeDeleteAction(mixed $action, bool $force = false): mixed
+    public static function customizeDeleteAction(DeleteAction|ForceDeleteAction $action, bool $force = false): DeleteAction|ForceDeleteAction
     {
         return $action
             ->form(function (AccountHead $record) {
@@ -304,7 +306,7 @@ class AccountHeadResource extends Resource
                         ->visible(fn (Get $get) => $get('reassign_choice') === 'bulk'),
                 ];
             })
-            ->action(function (AccountHead $record, array $data, mixed $action) use ($force) {
+            ->action(function (AccountHead $record, array $data, DeleteAction|ForceDeleteAction $action) use ($force) {
                 if (isset($data['reassign_choice'])) {
                     if ($data['reassign_choice'] === 'manual') {
                         $hasTransactions = $record->transactions()->exists();
