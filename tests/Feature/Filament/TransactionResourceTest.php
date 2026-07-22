@@ -350,21 +350,22 @@ describe('TransactionResource', function () {
             ->assertCanNotSeeTableRecords([$foreignT]);
     });
 
-    it('normalizeStatementType correctly processes enums and objects', function () {
-        $reflection = new ReflectionClass(TransactionResource::class);
-        $method = $reflection->getMethod('normalizeStatementType');
-        $method->setAccessible(true);
+    it('shows all statement types when the type subfilter is left blank', function () {
+        $tenantId = tenant()->id;
 
-        // Enum
-        expect($method->invoke(null, StatementType::Bank))->toBe(StatementType::Bank->value);
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $bankTxn = Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
 
-        // stdClass with value property (what Filament hydration sometimes passes)
-        expect($method->invoke(null, (object) ['value' => StatementType::CreditCard->value]))->toBe(StatementType::CreditCard->value);
-
-        // String
-        expect($method->invoke(null, StatementType::Invoice->value))->toBe(StatementType::Invoice->value);
-
-        // Null
-        expect($method->invoke(null, null))->toBeNull();
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', ['value' => ''])
+            ->assertCanSeeTableRecords([$bankTxn, $cardTxn]);
     });
 });

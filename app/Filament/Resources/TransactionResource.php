@@ -628,14 +628,6 @@ class TransactionResource extends Resource
 
     private static function normalizeStatementType(mixed $value): ?string
     {
-        if ($value instanceof StatementType) {
-            return $value->value;
-        }
-
-        if (is_object($value) && property_exists($value, 'value')) {
-            return (string) $value->value;
-        }
-
         if (is_string($value) && ! blank($value)) {
             return $value;
         }
