@@ -1123,4 +1123,56 @@ describe('ReconciliationService', function () {
                 ->and($invoiceTxn->reconciliation_status)->toBe(ReconciliationStatus::Unreconciled);
         });
     });
+
+    describe('incremental auto-matching with Flagged status', function () {
+        it('reconcile() matches previously flagged transactions when a new matching invoice arrives', function () {
+            // A bank transaction left as Flagged from an earlier unsuccessful reconciliation
+            $bankTxn = Transaction::factory()->debit(7500.00)->create([
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Vendor Payment',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Flagged,
+            ]);
+
+            // A newly uploaded invoice file arrives with the exact invoice
+            $invoice = Transaction::factory()->debit(7500.00)->create([
+                'imported_file_id' => $this->invoiceFile->id,
+                'description' => 'INV-7500 Vendor Payment',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $result = $this->service->reconcile($this->bankFile, $this->invoiceFile);
+
+            $bankTxn->refresh();
+            $invoice->refresh();
+
+            expect($result->matched)->toBe(1)
+                ->and($bankTxn->reconciliation_status)->toBe(ReconciliationStatus::Matched)
+                ->and($invoice->reconciliation_status)->toBe(ReconciliationStatus::Matched);
+        });
+
+        it('suggestMatches() generates suggestions for previously flagged transactions', function () {
+            $bankTxn = Transaction::factory()->debit(4200.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->bankFile->id,
+                'description' => 'NEFT-Consulting',
+                'date' => '2025-04-15',
+                'reconciliation_status' => ReconciliationStatus::Flagged,
+            ]);
+
+            $invoice = Transaction::factory()->debit(4200.00)->create([
+                'company_id' => $this->company->id,
+                'imported_file_id' => $this->invoiceFile->id,
+                'description' => 'INV-4200 Consulting',
+                'date' => '2025-04-12',
+                'reconciliation_status' => ReconciliationStatus::Unreconciled,
+            ]);
+
+            $count = $this->service->suggestMatches($this->invoiceFile);
+
+            expect($count)->toBe(1)
+                ->and(ReconciliationMatch::where('bank_transaction_id', $bankTxn->id)->count())->toBe(1);
+        });
+    });
 });
