@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Exports\Concerns\AppliesTableStyling;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -10,6 +11,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
 {
+    use AppliesTableStyling;
+
     public function title(): string
     {
         return 'Transactions';
@@ -94,6 +97,13 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                     $sheet->setCellValue("{$creditCol}{$totalsRow}", "=SUM({$creditCol}{$dataStartRow}:{$creditCol}{$lastDataRow})");
                 }
 
+                if (isset($colLetters['balance'], $colLetters['debit'], $colLetters['credit'])) {
+                    $balanceCol = $colLetters['balance'];
+                    $debitCol = $colLetters['debit'];
+                    $creditCol = $colLetters['credit'];
+                    $sheet->setCellValue("{$balanceCol}{$totalsRow}", "={$debitCol}{$totalsRow}-{$creditCol}{$totalsRow}");
+                }
+
                 $sheet->getStyle("A{$headerRow}:{$lastColLetter}{$headerRow}")->getFont()->setBold(true);
                 $sheet->getStyle("A{$totalsRow}:{$lastColLetter}{$totalsRow}")->getFont()->setBold(true);
 
@@ -107,6 +117,12 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                         $sheet->getRowDimension($i)->setRowHeight(20);
                     }
                 }
+
+                $this->applyTableStyling(
+                    $sheet,
+                    "A{$headerRow}:{$lastColLetter}{$totalsRow}",
+                    "A{$headerRow}:{$lastColLetter}{$headerRow}",
+                );
             },
         ];
     }

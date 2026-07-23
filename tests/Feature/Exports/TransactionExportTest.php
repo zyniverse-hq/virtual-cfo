@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 describe('export base query filtering', function () {
@@ -363,6 +365,60 @@ describe('TransactionDetailSheet', function () {
 
         // Verify Totals Row (Row 4) has height 20.0
         expect($ws->getRowDimension(4)->getRowHeight())->toBe(20.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('totals row balance cell shows total debit minus total credit', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(3000)->create();
+        Transaction::factory()->mapped($head)->credit(1500)->create();
+
+        $path = 'test-exports/detail-totals-balance.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        $totalsRow = $ws->getHighestRow();
+
+        // Columns (all selected, no metadata): debit=D, credit=E, balance=F.
+        // Balance total = total debit - total credit = 3000 - 1500 = 1500.
+        expect((float) $ws->getCell("F{$totalsRow}")->getCalculatedValue())->toBe(1500.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('applies a fill background to the header row', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create();
+
+        $path = 'test-exports/detail-header-fill.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        // No metadata: header is row 1.
+        $headerFill = $ws->getCell('A1')->getStyle()->getFill()->getFillType();
+        expect($headerFill)->toBe(Fill::FILL_SOLID);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('applies borders to the data range', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create();
+
+        $path = 'test-exports/detail-borders.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        // No metadata: first data row is row 2.
+        $borderStyle = $ws->getCell('A2')->getStyle()->getBorders()->getBottom()->getBorderStyle();
+        expect($borderStyle)->not->toBe(Border::BORDER_NONE);
 
         Storage::disk('local')->delete($path);
     });
