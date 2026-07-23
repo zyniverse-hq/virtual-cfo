@@ -27,11 +27,13 @@ use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Support\Exceptions\Halt;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
@@ -178,14 +180,24 @@ class TransactionsRelationManager extends RelationManager
                             /** @var Company|null $tenant */
                             $tenant = Filament::getTenant();
 
-                            HeadMapping::create([
-                                'pattern' => $data['pattern'],
-                                'match_type' => $data['match_type'],
-                                'account_head_id' => $data['account_head_id'],
-                                'bank_name' => $data['bank_name'] ?: null,
-                                'company_id' => $tenant?->id,
-                                'created_by' => Auth::id(),
-                            ]);
+                            try {
+                                DB::transaction(fn () => HeadMapping::create([
+                                    'pattern' => $data['pattern'],
+                                    'match_type' => $data['match_type'],
+                                    'account_head_id' => $data['account_head_id'],
+                                    'bank_name' => $data['bank_name'] ?: null,
+                                    'company_id' => $tenant?->id,
+                                    'created_by' => Auth::id(),
+                                ]));
+                            } catch (UniqueConstraintViolationException) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Duplicate rule')
+                                    ->body('A mapping rule with this pattern, match type, and account head already exists.')
+                                    ->send();
+
+                                throw new Halt;
+                            }
 
                             Notification::make()
                                 ->title('Mapping rule created')
@@ -410,6 +422,12 @@ class TransactionsRelationManager extends RelationManager
                         ->form([
                             Forms\Components\DatePicker::make('from')->label('From Date'),
                             Forms\Components\DatePicker::make('until')->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data): BinaryFileResponse {
                             /** @var ImportedFile $file */
@@ -421,6 +439,7 @@ class TransactionsRelationManager extends RelationManager
                                     until: $data['until'] ?? null,
                                     baseQuery: Transaction::where('imported_file_id', $file->id),
                                     importedFile: $file,
+                                    selectedColumns: $data['columns'] ?? null,
                                 ),
                                 'transactions-'.now()->format('Y-m-d-His').'.csv',
                             );
@@ -432,6 +451,12 @@ class TransactionsRelationManager extends RelationManager
                         ->form([
                             Forms\Components\DatePicker::make('from')->label('From Date'),
                             Forms\Components\DatePicker::make('until')->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data): BinaryFileResponse {
                             /** @var ImportedFile $file */
@@ -443,6 +468,7 @@ class TransactionsRelationManager extends RelationManager
                                     until: $data['until'] ?? null,
                                     baseQuery: Transaction::where('imported_file_id', $file->id),
                                     importedFile: $file->load('creditCard'),
+                                    selectedColumns: $data['columns'] ?? null,
                                 ),
                                 'transactions-'.now()->format('Y-m-d-His').'.xlsx',
                             );
