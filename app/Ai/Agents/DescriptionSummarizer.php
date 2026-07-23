@@ -57,6 +57,10 @@ class DescriptionSummarizer implements Agent, HasMiddleware, HasStructuredOutput
         INSTRUCTIONS;
     }
 
+    /**
+     * @param JsonSchema $schema
+     * @return array<string, mixed>
+     */
     public function schema(JsonSchema $schema): array
     {
         return [

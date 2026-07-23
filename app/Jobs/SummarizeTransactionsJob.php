@@ -28,39 +28,41 @@ class SummarizeTransactionsJob implements ShouldQueue
             ->whereNull('short_description')
             ->select(['id', 'description'])
             ->chunkById(50, function ($transactions) {
-                
-                $batch = $transactions->map(fn (Transaction $t) => [
-                    'id' => $t->id,
-                    'description' => $t->description,
-                ])->toArray();
+                $batch = $transactions->map(function ($t) {
+                    /** @var \App\Models\Transaction $t */
+                    return [
+                        'id' => $t->id,
+                        'description' => $t->description,
+                    ];
+                })->toArray();
 
                 try {
                     $response = DescriptionSummarizer::make()->prompt(
-                        'Summarize these transaction descriptions.',
-                        data: $batch
+                        'Summarize these transaction descriptions: ' . json_encode($batch)
                     );
 
+                    /** @var array<int, array{transaction_id: int, short_description: string}> $summaries */
                     $summaries = $response['summaries'] ?? [];
-                    
+
                     // Group by transaction_id for easy lookup
                     $summariesMap = collect($summaries)->keyBy('transaction_id');
 
                     // Batch update
                     foreach ($transactions as $transaction) {
+                        /** @var \App\Models\Transaction $transaction */
                         $summary = $summariesMap->get($transaction->id);
-                        if ($summary && !empty($summary['short_description'])) {
+                        if ($summary && ! empty($summary['short_description'])) {
                             $transaction->updateQuietly([
-                                'short_description' => $summary['short_description']
+                                'short_description' => $summary['short_description'],
                             ]);
-                        } 
+                        }
                     }
                 } catch (\Exception $e) {
                     Log::error('Failed to summarize descriptions batch', [
                         'file_id' => $this->file->id,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                 }
             });
     }
 }
-
