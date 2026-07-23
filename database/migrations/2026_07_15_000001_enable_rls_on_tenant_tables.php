@@ -15,6 +15,8 @@ return new class extends Migration
         'recurring_patterns',
         'duplicate_flags',
         'budgets',
+        'invitations',
+        'company_credit_card',
     ];
 
     public function up(): void

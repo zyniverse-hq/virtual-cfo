@@ -5,12 +5,15 @@ use App\Models\BankAccount;
 use App\Models\Budget;
 use App\Models\Company;
 use App\Models\Connector;
+use App\Models\CreditCard;
 use App\Models\DuplicateFlag;
 use App\Models\HeadMapping;
 use App\Models\ImportedFile;
 use App\Models\InboundEmail;
+use App\Models\Invitation;
 use App\Models\RecurringPattern;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -62,6 +65,10 @@ describe('Row-Level Security', function () {
             ->whereIn('company_id', [$this->companyA->id, $this->companyB->id])
             ->orWhereNull('company_id')
             ->delete();
+        Invitation::whereIn('company_id', [$this->companyA->id, $this->companyB->id])->delete();
+        // company_credit_card pivot before credit_cards (references credit_card_id FK)
+        DB::table('company_credit_card')->whereIn('company_id', [$this->companyA->id, $this->companyB->id])->delete();
+        CreditCard::withoutGlobalScopes()->whereIn('company_id', [$this->companyA->id, $this->companyB->id])->forceDelete();
         $this->companyA->forceDelete();
         $this->companyB->forceDelete();
     });
@@ -280,5 +287,31 @@ describe('Row-Level Security', function () {
 
         // Empty context → policy THEN true → all rows visible including NULL rows.
         expect(DB::table('inbound_emails')->count())->toBe(2);
+    });
+
+    it('enforces RLS on invitations table', function () {
+        Invitation::factory()->for($this->companyA)->create();
+        Invitation::factory()->for($this->companyB)->create();
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        expect(DB::table('invitations')->count())->toBe(1);
+    });
+
+    it('enforces RLS on company_credit_card table', function () {
+        $cardA = CreditCard::factory()->for($this->companyA)->create();
+        $cardB = CreditCard::factory()->for($this->companyB)->create();
+        $sharer = User::factory()->create();
+
+        DB::table('company_credit_card')->insert([
+            ['company_id' => $this->companyA->id, 'credit_card_id' => $cardA->id, 'shared_by' => $sharer->id, 'created_at' => now(), 'updated_at' => now()],
+            ['company_id' => $this->companyB->id, 'credit_card_id' => $cardB->id, 'shared_by' => $sharer->id, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        expect(DB::table('company_credit_card')->count())->toBe(1);
     });
 });
