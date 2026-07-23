@@ -29,7 +29,7 @@ class SummarizeTransactionsJob implements ShouldQueue
             ->select(['id', 'description'])
             ->chunkById(50, function ($transactions) {
                 $batch = $transactions->map(function ($t) {
-                    /** @var \App\Models\Transaction $t */
+                    /** @var Transaction $t */
                     return [
                         'id' => $t->id,
                         'description' => $t->description,
@@ -38,7 +38,7 @@ class SummarizeTransactionsJob implements ShouldQueue
 
                 try {
                     $response = DescriptionSummarizer::make()->prompt(
-                        'Summarize these transaction descriptions: ' . json_encode($batch)
+                        'Summarize these transaction descriptions: '.json_encode($batch)
                     );
 
                     /** @var array<int, array{transaction_id: int, short_description: string}> $summaries */
@@ -49,7 +49,7 @@ class SummarizeTransactionsJob implements ShouldQueue
 
                     // Batch update
                     foreach ($transactions as $transaction) {
-                        /** @var \App\Models\Transaction $transaction */
+                        /** @var Transaction $transaction */
                         $summary = $summariesMap->get($transaction->id);
                         if ($summary && ! empty($summary['short_description'])) {
                             $transaction->updateQuietly([
