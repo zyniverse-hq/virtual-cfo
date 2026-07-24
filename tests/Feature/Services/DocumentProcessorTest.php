@@ -240,6 +240,32 @@ describe('DocumentProcessor', function () {
                 ->and($file->total_rows)->toBe(1);
         });
 
+        it('saves the company default currency on bank statement import transactions', function () {
+            Storage::put('statements/currency_bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'transactions' => [
+                        ['date' => '2024-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $company = Company::factory()->create(['currency' => 'USD']);
+            $file = ImportedFile::factory()->for($company)->create([
+                'file_path' => 'statements/currency_bank.pdf',
+                'original_filename' => 'bank_currency.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transaction = Transaction::where('imported_file_id', $file->id)->first();
+            expect($transaction->currency)->toBe('USD');
+        });
+
         it('regenerates display name dynamically if it was a default fallback', function () {
             Storage::put('statements/bank.pdf', 'fake-pdf-content');
 
