@@ -122,7 +122,24 @@ class ReconciliationResource extends Resource
                             ->success()
                             ->send();
                     })
-                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->where('status', MatchStatus::Suggested)->isNotEmpty()),
+
+                Actions\Action::make('reject_suggestions')
+                    ->label('Reject All')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->action(function (Transaction $record) {
+                        app(ReconciliationService::class)->rejectAllMatches($record);
+
+                        Notification::make()
+                            ->title('All suggestions rejected')
+                            ->warning()
+                            ->send();
+                    })
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank
+                        ->whereIn('status', [MatchStatus::Suggested, MatchStatus::Confirmed])
+                        ->isNotEmpty()),
 
                 Actions\Action::make('reject_suggestions')
                     ->label('Reject All')
@@ -216,7 +233,7 @@ class ReconciliationResource extends Resource
                             $service = app(ReconciliationService::class);
 
                             /** @var Collection<int, Transaction> $records */
-                            $records->each(fn (Transaction $record) => $service->rejectAllSuggestions($record));
+                            $records->each(fn (Transaction $record) => $service->rejectAllMatches($record));
                         })
                         ->deselectRecordsAfterCompletion(),
                 ]),

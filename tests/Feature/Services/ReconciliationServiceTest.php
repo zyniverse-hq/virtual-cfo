@@ -1062,7 +1062,7 @@ describe('ReconciliationService', function () {
         });
     });
 
-    describe('rejectAllSuggestions', function () {
+    describe('rejectAllMatches', function () {
         it('rejects all suggested matches for a bank transaction', function () {
             $bankTxn = Transaction::factory()->create([
                 'imported_file_id' => $this->bankFile->id,
@@ -1086,7 +1086,7 @@ describe('ReconciliationService', function () {
                 'invoice_transaction_id' => $invoice2->id,
             ]);
 
-            $this->service->rejectAllSuggestions($bankTxn);
+            $this->service->rejectAllMatches($bankTxn);
 
             $match1->refresh();
             $match2->refresh();
@@ -1112,7 +1112,7 @@ describe('ReconciliationService', function () {
                 'status' => MatchStatus::Confirmed,
             ]);
 
-            $this->service->rejectAllSuggestions($bankTxn);
+            $this->service->rejectAllMatches($bankTxn);
 
             $match->refresh();
             $bankTxn->refresh();
