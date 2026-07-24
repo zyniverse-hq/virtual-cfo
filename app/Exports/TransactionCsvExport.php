@@ -151,8 +151,8 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
             return;
         }
 
-        $sheet->setCellValue('A1', 'Bank:');
-        $sheet->setCellValue('B1', $this->importedFile->bank_name ?? '');
+        $sheet->setCellValue('A1', $this->importedFile->getExportAccountTitle());
+        $sheet->setCellValue('B1', $this->importedFile->getFullBankOrCardName());
         $sheet->setCellValue('A2', 'Account Holder:');
         $sheet->setCellValue('B2', $this->importedFile->account_holder_name ?? '');
         $sheet->setCellValue('A3', 'Statement Period:');

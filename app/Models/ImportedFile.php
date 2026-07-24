@@ -193,4 +193,39 @@ class ImportedFile extends Model
 
         return round(($this->mapped_rows / $this->total_rows) * 100, 1);
     }
+
+    public function getExportAccountTitle(): string
+    {
+        return $this->statement_type === StatementType::CreditCard ? 'Card:' : 'Account:';
+    }
+
+    public function getFullBankOrCardName(): string
+    {
+        $bankName = $this->bank_name ?? '';
+
+        if ($this->statement_type === StatementType::CreditCard) {
+            $this->loadMissing('creditCard');
+
+            $baseName = trim((string) ($this->creditCard?->name ?? $bankName));
+            $variant = trim((string) $this->card_variant);
+
+            if ($variant === '') {
+                return $baseName;
+            }
+
+            if ($baseName === '') {
+                return $variant;
+            }
+
+            if (stripos($variant, $baseName) !== false) {
+                return $variant;
+            }
+
+            return $baseName.' '.$variant;
+        }
+
+        $this->loadMissing('bankAccount');
+
+        return trim((string) ($this->bankAccount?->name ?? $bankName));
+    }
 }

@@ -1,12 +1,14 @@
 <?php
 
 use App\Enums\MappingType;
+use App\Enums\StatementType;
 use App\Exports\TransactionCsvExport;
 use App\Exports\TransactionDetailSheet;
 use App\Exports\TransactionExcelExport;
 use App\Exports\TransactionSummarySheet;
 use App\Models\AccountHead;
 use App\Models\Company;
+use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -176,13 +178,46 @@ describe('TransactionCsvExport', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $sheet = $spreadsheet->getActiveSheet();
 
-        expect($sheet->getCell('A1')->getValue())->toBe('Bank:')
+        expect($sheet->getCell('A1')->getValue())->toBe('Account:')
             ->and($sheet->getCell('B1')->getValue())->toBe('HDFC Bank')
             ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($sheet->getCell('B2')->getValue())->toBe('Zysk Technologies')
             ->and($sheet->getCell('A3')->getValue())->toBe('Statement Period:')
             ->and($sheet->getCell('B3')->getValue())->toBe('Apr 2025')
             ->and($sheet->getCell('A4')->getValue())->toBe('Date'); // headings at row 4
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes metadata header rows for credit card statement with variant dedup', function () {
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'Amazon Pay ICICI Bank Credit Card',
+            'account_holder_name' => 'John Doe',
+            'statement_period' => 'May 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/transactions-meta-cc.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Card:')
+            ->and($sheet->getCell('B1')->getValue())->toBe('Amazon Pay ICICI Bank Credit Card')
+            ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
+            ->and($sheet->getCell('B2')->getValue())->toBe('John Doe');
 
         Storage::disk('local')->delete($path);
     });
@@ -279,7 +314,7 @@ describe('TransactionDetailSheet', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $ws = $spreadsheet->getSheetByName('Transactions');
 
-        expect($ws->getCell('A1')->getValue())->toBe('Bank:')
+        expect($ws->getCell('A1')->getValue())->toBe('Account:')
             ->and($ws->getCell('B1')->getValue())->toBe('ICICI Bank')
             ->and($ws->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($ws->getCell('B2')->getValue())->toBe('Rahul Sharma')
