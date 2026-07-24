@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Exports\Concerns\AppliesTableStyling;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\ImportedFile;
@@ -18,6 +19,8 @@ use Maatwebsite\Excel\Events\AfterSheet;
 
 class TransactionSummarySheet implements FromCollection, WithCustomStartCell, WithEvents, WithHeadings, WithTitle
 {
+    use AppliesTableStyling;
+
     /** @param Builder<Transaction>|null $baseQuery */
     public function __construct(
         public ?string $from = null,
@@ -189,6 +192,12 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 for ($i = $headerRow; $i <= $totalsRow; $i++) {
                     $sheet->getRowDimension($i)->setRowHeight(20);
                 }
+
+                $this->applyTableStyling(
+                    $sheet,
+                    "A{$headerRow}:D{$totalsRow}",
+                    "A{$headerRow}:D{$headerRow}",
+                );
             },
         ];
     }
