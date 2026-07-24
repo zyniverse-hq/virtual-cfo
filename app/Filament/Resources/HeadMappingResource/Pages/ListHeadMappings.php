@@ -16,7 +16,8 @@ class ListHeadMappings extends ListRecords
     {
         return [
             Actions\CreateAction::make()
-                ->icon('heroicon-o-plus'),
+                ->icon('heroicon-o-plus')
+                ->extraAttributes(['class' => 'tour-create-rule']),
             Action::make('page_tour')
                 ->label('Page Tour')
                 ->icon('heroicon-o-academic-cap')
