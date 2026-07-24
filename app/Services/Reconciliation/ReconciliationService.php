@@ -2,6 +2,7 @@
 
 namespace App\Services\Reconciliation;
 
+use App\Enums\ImportSource;
 use App\Enums\MatchMethod;
 use App\Enums\MatchStatus;
 use App\Enums\ReconciliationStatus;
@@ -20,6 +21,12 @@ use Illuminate\Support\Facades\Log;
 class ReconciliationService
 {
     /**
+     * Minimum confidence score (0-1) required to automatically confirm matches
+     * for invoices received via email.
+     */
+    public const AUTO_CONFIRM_EMAIL_THRESHOLD = 0.90;
+
+    /**
      * Default tolerance for amount matching (in currency units).
      * Allows for minor rounding differences.
      */
@@ -37,11 +44,13 @@ class ReconciliationService
     private const MIN_PARTY_SIMILARITY = 60;
 
     /**
-     * Run the full reconciliation process for a bank file against an invoice file.
+     * Run the full reconciliation process for a bank file against one or more invoice files.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
     public function reconcile(
         ImportedFile $bankFile,
-        ImportedFile $invoiceFile,
+        ImportedFile|Collection|array $invoiceFiles,
         float $tolerance = self::DEFAULT_AMOUNT_TOLERANCE,
         int $dayWindow = self::DEFAULT_DATE_WINDOW,
     ): ReconciliationResult {
@@ -51,12 +60,18 @@ class ReconciliationService
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
-        $invoiceTransactions = $invoiceFile->transactions()
+        $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
+            ? collect([$invoiceFiles])
+            : collect($invoiceFiles);
+
+        $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
+
+        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
         if ($bankTransactions->isEmpty() || $invoiceTransactions->isEmpty()) {
-            $this->flagUnmatched($bankFile, $invoiceFile);
+            $this->flagUnmatched($bankFile, $invoiceFilesCollection);
             $result->flagged = $bankTransactions->count() + $invoiceTransactions->count();
 
             return $result;
@@ -102,18 +117,18 @@ class ReconciliationService
         });
 
         // Flag remaining unmatched items
-        $this->flagUnmatched($bankFile, $invoiceFile);
+        $this->flagUnmatched($bankFile, $invoiceFilesCollection);
+
+        $allFileIds = array_merge([$bankFile->id], $invoiceFileIds);
 
         // Count flagged items
-        $result->flagged = Transaction::where(function ($query) use ($bankFile, $invoiceFile) {
-            $query->where('imported_file_id', $bankFile->id)
-                ->orWhere('imported_file_id', $invoiceFile->id);
-        })->where('reconciliation_status', ReconciliationStatus::Flagged)->count();
+        $result->flagged = Transaction::whereIn('imported_file_id', $allFileIds)
+            ->where('reconciliation_status', ReconciliationStatus::Flagged)
+            ->count();
 
-        $result->unreconciled = Transaction::where(function ($query) use ($bankFile, $invoiceFile) {
-            $query->where('imported_file_id', $bankFile->id)
-                ->orWhere('imported_file_id', $invoiceFile->id);
-        })->where('reconciliation_status', ReconciliationStatus::Unreconciled)->count();
+        $result->unreconciled = Transaction::whereIn('imported_file_id', $allFileIds)
+            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->count();
 
         return $result;
     }
@@ -310,16 +325,22 @@ class ReconciliationService
 
     /**
      * Flag all unmatched transactions in both files.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
-    public function flagUnmatched(ImportedFile $bankFile, ImportedFile $invoiceFile): void
+    public function flagUnmatched(ImportedFile $bankFile, ImportedFile|Collection|array $invoiceFiles): void
     {
+        $invoiceFileIds = ($invoiceFiles instanceof ImportedFile ? collect([$invoiceFiles]) : collect($invoiceFiles))
+            ->pluck('id')
+            ->all();
+
         // Flag unreconciled bank transactions
         Transaction::where('imported_file_id', $bankFile->id)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->update(['reconciliation_status' => ReconciliationStatus::Flagged]);
 
         // Flag unreconciled invoice transactions
-        Transaction::where('imported_file_id', $invoiceFile->id)
+        Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->update(['reconciliation_status' => ReconciliationStatus::Flagged]);
     }
@@ -427,14 +448,25 @@ class ReconciliationService
     /**
      * Scan for invoice match candidates and create suggested matches.
      * Returns the number of suggestions created.
+     *
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
-    public function suggestMatches(ImportedFile $invoiceFile): int
+    public function suggestMatches(ImportedFile|Collection|array $invoiceFiles): int
     {
-        $companyId = $invoiceFile->company_id;
+        $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
+            ? collect([$invoiceFiles])
+            : collect($invoiceFiles);
 
-        // Get all unreconciled invoice transactions from this file
+        if ($invoiceFilesCollection->isEmpty()) {
+            return 0;
+        }
+
+        $companyId = $invoiceFilesCollection->first()->company_id;
+        $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
+
+        // Get all unreconciled invoice transactions from these files
         /** @var Collection<int, Transaction> $invoiceTransactions */
-        $invoiceTransactions = $invoiceFile->transactions()
+        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
             ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
             ->get();
 
@@ -463,13 +495,27 @@ class ReconciliationService
             ->flip();
 
         $suggestionsCreated = 0;
+        /** @var Collection<int, int> $confirmedInvoiceIds */
+        $confirmedInvoiceIds = collect();
+        $emailInvoiceFileIds = $invoiceFilesCollection
+            ->filter(fn (ImportedFile $file) => $file->source === ImportSource::Email)
+            ->pluck('id')
+            ->flip();
 
         foreach ($bankTransactions as $bankTxn) {
             if ($alreadySuggestedIds->has($bankTxn->id)) {
                 continue;
             }
 
-            $candidates = $this->findCandidates($bankTxn, $invoiceTransactions);
+            $availableInvoices = $invoiceTransactions->reject(
+                fn (Transaction $inv) => $confirmedInvoiceIds->contains($inv->id)
+            );
+
+            if ($availableInvoices->isEmpty()) {
+                break;
+            }
+
+            $candidates = $this->findCandidates($bankTxn, $availableInvoices);
 
             if (empty($candidates)) {
                 continue;
@@ -477,13 +523,27 @@ class ReconciliationService
 
             // Create suggestion for the best candidate
             $best = $candidates[0];
-            $this->createMatch(
+            $match = $this->createMatch(
                 $bankTxn,
                 $best['invoice'],
                 $best['confidence'],
                 $best['method'],
                 MatchStatus::Suggested,
             );
+
+            $isEmailInvoice = $emailInvoiceFileIds->has($best['invoice']->imported_file_id);
+            if ($isEmailInvoice && $best['confidence'] >= self::AUTO_CONFIRM_EMAIL_THRESHOLD) {
+                $this->confirmSuggestion($match);
+                $confirmedInvoiceIds->push($best['invoice']->id);
+
+                Log::info('Email invoice match auto-confirmed', [
+                    'match_id' => $match->id,
+                    'bank_transaction_id' => $bankTxn->id,
+                    'invoice_transaction_id' => $best['invoice']->id,
+                    'confidence' => $best['confidence'],
+                ]);
+            }
+
             $suggestionsCreated++;
         }
 
@@ -543,13 +603,36 @@ class ReconciliationService
     }
 
     /**
-     * Reject all pending suggestions for a bank transaction.
+     * Reject all pending suggestions and confirmed matches for a bank transaction.
      */
     public function rejectAllSuggestions(Transaction $bankTxn): int
     {
-        return $bankTxn->reconciliationMatchesAsBank()
-            ->suggested()
-            ->update(['status' => MatchStatus::Rejected]);
+        return DB::transaction(function () use ($bankTxn) {
+            $suggestedUpdated = $bankTxn->reconciliationMatchesAsBank()
+                ->suggested()
+                ->update(['status' => MatchStatus::Rejected]);
+
+            $confirmedMatches = $bankTxn->reconciliationMatchesAsBank()
+                ->confirmed()
+                ->with(['bankTransaction', 'invoiceTransaction'])
+                ->get();
+
+            $confirmedUpdated = $confirmedMatches->count();
+
+            foreach ($confirmedMatches as $match) {
+                $match->update(['status' => MatchStatus::Rejected]);
+
+                if ($match->bankTransaction) {
+                    $match->bankTransaction->update(['reconciliation_status' => ReconciliationStatus::Unreconciled]);
+                }
+
+                if ($match->invoiceTransaction) {
+                    $match->invoiceTransaction->update(['reconciliation_status' => ReconciliationStatus::Unreconciled]);
+                }
+            }
+
+            return $suggestedUpdated + $confirmedUpdated;
+        });
     }
 
     /**

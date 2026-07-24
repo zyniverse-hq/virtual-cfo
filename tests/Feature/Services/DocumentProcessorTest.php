@@ -11,6 +11,7 @@ use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\DocumentProcessor\DocumentProcessor;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -263,6 +264,69 @@ describe('DocumentProcessor', function () {
 
             $transaction = Transaction::where('imported_file_id', $file->id)->first();
             expect($transaction->currency)->toBe('USD');
+        });
+
+        it('regenerates display name dynamically if it was a default fallback', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => Carbon::parse('2025-01-10'),
+            ]);
+
+            $file->update(['display_name' => 'Jan 2025']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            expect($file->display_name)->toBe('HDFC Bank Jan 2025');
+        });
+
+        it('preserves user-supplied display name and does not regenerate', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => Carbon::parse('2025-01-10'),
+            ]);
+
+            // This explicitly simulates a manual user override that should NOT be touched
+            $file->update(['display_name' => 'My Custom Override']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+
+            // The display name should NOT update to 'HDFC Bank Jan 2025'
+            expect($file->display_name)->toBe('My Custom Override');
         });
 
         it('routes credit card statement PDFs to StatementParser agent', function () {
@@ -913,7 +977,7 @@ describe('DocumentProcessor', function () {
             $this->processor->process($file);
 
             $file->refresh();
-            expect($file->display_name)->toBe('ICICI Bank_Platinum_Mar_2026');
+            expect($file->display_name)->toBe('ICICI Bank Platinum Mar 2026');
         });
 
         it('preserves user-entered display_name after processing', function () {
@@ -1136,5 +1200,220 @@ describe('DocumentProcessor', function () {
 
             $this->processor->process($file);
         })->throws(RuntimeException::class, 'Unsupported file extension');
+    });
+
+    describe('previous balance date resolution', function () {
+        it('uses statement period start date for Previous Balance transaction when period is in human-readable format', function () {
+            Storage::put('statements/cc_prev_bal_human.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC CC',
+                    'statement_period' => '01 Apr 2026 - 30 Apr 2026',
+                    'previous_balance' => 5000.00,
+                    'transactions' => [
+                        ['date' => '02 Apr 2026', 'description' => 'AMAZON', 'debit' => 2000],
+                        ['date' => '10 Apr 2026', 'description' => 'SWIGGY', 'debit' => 500],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_human.pdf',
+                'original_filename' => 'hdfc_cc_apr26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+        });
+
+        it('uses statement period start date for Previous Balance transaction when period uses slash-separated Indian format', function () {
+            Storage::put('statements/cc_prev_bal_slash.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI CC',
+                    'statement_period' => '01/04/2026 - 30/04/2026',
+                    'previous_balance' => 3000.00,
+                    'transactions' => [
+                        ['date' => '02/04/2026', 'description' => 'MYNTRA', 'debit' => 1000],
+                        ['date' => '15/04/2026', 'description' => 'ZOMATO', 'debit' => 300],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_slash.pdf',
+                'original_filename' => 'icici_cc_apr26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+        });
+
+        it('uses statement period start date for Previous Balance transaction when period uses dash-separated Indian format', function () {
+            Storage::put('statements/cc_prev_bal_dash.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'Axis CC',
+                    'statement_period' => '01-04-2026 - 30-04-2026',
+                    'previous_balance' => 7500.00,
+                    'transactions' => [
+                        ['date' => '05-04-2026', 'description' => 'NETFLIX', 'debit' => 649],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_dash.pdf',
+                'original_filename' => 'axis_cc_apr26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+        });
+
+        it('uses statement period start date for Previous Balance transaction when period is in ISO format', function () {
+            Storage::put('statements/cc_prev_bal_iso.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'SBI CC',
+                    'statement_period' => '2026-04-01 to 2026-04-30',
+                    'previous_balance' => 2000.00,
+                    'transactions' => [
+                        ['date' => '2026-04-03', 'description' => 'IRCTC', 'debit' => 800],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_iso.pdf',
+                'original_filename' => 'sbi_cc_apr26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+        });
+
+        it('uses statement period start date for Previous Balance transaction when period uses full month name format', function () {
+            Storage::put('statements/cc_prev_bal_fullmonth.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI CC',
+                    'statement_period' => 'March 6, 2026 to April 5, 2026',
+                    'previous_balance' => 8000.00,
+                    'transactions' => [
+                        ['date' => '07 Mar 2026', 'description' => 'AMAZON', 'debit' => 2000],
+                        ['date' => '15 Mar 2026', 'description' => 'SWIGGY', 'debit' => 500],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_fullmonth.pdf',
+                'original_filename' => 'icici_cc_mar26.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-03-06');
+        });
+
+        it('does not create Previous Balance transaction when previous_balance is zero', function () {
+            Storage::put('statements/cc_no_prev_bal.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC CC',
+                    'statement_period' => '01 Apr 2026 - 30 Apr 2026',
+                    'previous_balance' => 0,
+                    'transactions' => [
+                        ['date' => '01 Apr 2026', 'description' => 'AMAZON', 'debit' => 1000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_no_prev_bal.pdf',
+                'original_filename' => 'hdfc_cc_no_prev.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->toBeNull();
+        });
+
+        it('falls back to earliest transaction date when statement_period contains no parseable date', function () {
+            Storage::put('statements/cc_prev_bal_unparseable.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC CC',
+                    'statement_period' => 'April 2026',
+                    'previous_balance' => 4000.00,
+                    'transactions' => [
+                        ['date' => '05 Apr 2026', 'description' => 'FLIPKART', 'debit' => 1200],
+                        ['date' => '10 Apr 2026', 'description' => 'UBER', 'debit' => 250],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_bal_unparseable.pdf',
+                'original_filename' => 'hdfc_cc_unparseable.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalanceTx = Transaction::where('imported_file_id', $file->id)
+                ->where('is_synthetic', true)
+                ->first();
+
+            expect($previousBalanceTx)->not->toBeNull()
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-05');
+        });
     });
 });
