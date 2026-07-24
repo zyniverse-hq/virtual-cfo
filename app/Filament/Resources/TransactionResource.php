@@ -13,6 +13,7 @@ use App\Exports\TransactionExcelExport;
 use App\Filament\Resources\TransactionResource\Pages;
 use App\Jobs\MatchTransactionHeads;
 use App\Models\AccountHead;
+use App\Models\BankAccount;
 use App\Models\Company;
 use App\Models\CreditCard;
 use App\Models\HeadMapping;
@@ -122,21 +123,86 @@ class TransactionResource extends Resource
                         Forms\Components\Select::make('value')
                             ->label('Type')
                             ->options(StatementType::class)
-                            ->placeholder('All types'),
+                            ->placeholder('All types')
+                            ->live(),
+
+                        Forms\Components\Select::make('credit_card_id')
+                            ->label('Credit Card')
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? CreditCard::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
+                            ->visible(function ($get) {
+                                $val = self::normalizeStatementType($get('value'));
+
+                                return $val === StatementType::CreditCard->value;
+                            })
+                            ->searchable(),
+
+                        Forms\Components\Select::make('bank_account_id')
+                            ->label('Bank Account')
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? BankAccount::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
+                            ->visible(function ($get) {
+                                $val = self::normalizeStatementType($get('value'));
+
+                                return $val === StatementType::Bank->value;
+                            })
+                            ->searchable(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (blank($data['value'])) {
+                        $type = self::normalizeStatementType($data['value'] ?? null);
+
+                        if (blank($type)) {
                             return $query;
                         }
 
-                        return $query->whereHas('importedFile', fn (Builder $q) => $q->where('statement_type', $data['value']));
+                        $query->whereHas('importedFile', function (Builder $q) use ($data, $type) {
+                            $q->where('statement_type', $type);
+
+                            if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                                $q->where('credit_card_id', $data['credit_card_id']);
+                            }
+
+                            if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                                $q->where('bank_account_id', $data['bank_account_id']);
+                            }
+                        });
+
+                        return $query;
                     })
-                    ->indicateUsing(function (array $data): ?string {
-                        if (blank($data['value'])) {
-                            return null;
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        $type = self::normalizeStatementType($data['value'] ?? null);
+
+                        if (! blank($type)) {
+                            $indicators[] = Tables\Filters\Indicator::make(StatementType::tryFrom($type)?->getLabel())
+                                ->removeField('value');
                         }
 
-                        return StatementType::tryFrom($data['value'])?->getLabel();
+                        if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                            $card = CreditCard::find($data['credit_card_id']);
+                            if ($card) {
+                                $indicators[] = Tables\Filters\Indicator::make('Card: '.$card->name)
+                                    ->removeField('credit_card_id');
+                            }
+                        }
+
+                        if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                            $bank = BankAccount::find($data['bank_account_id']);
+                            if ($bank) {
+                                $indicators[] = Tables\Filters\Indicator::make('Bank: '.$bank->name)
+                                    ->removeField('bank_account_id');
+                            }
+                        }
+
+                        return $indicators;
                     }),
 
                 Tables\Filters\SelectFilter::make('mapping_type')
@@ -578,6 +644,15 @@ class TransactionResource extends Resource
                     ->close(),
             ])
             ->send();
+    }
+
+    private static function normalizeStatementType(mixed $value): ?string
+    {
+        if (is_string($value) && ! blank($value)) {
+            return $value;
+        }
+
+        return null;
     }
 
     /** @return Builder<Transaction>|null */
