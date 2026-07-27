@@ -164,6 +164,7 @@ describe('Cross-Tenant Credit Card Sharing', function () {
             foreach ($transactions as $tx) {
                 $tx->refresh();
                 expect($tx->company_id)->toBe($targetCompany->id)
+                    ->and($tx->currency)->toBe($targetCompany->currency)
                     ->and($tx->account_head_id)->toBeNull()
                     ->and($tx->mapping_type)->toBe(MappingType::Unmapped)
                     ->and($tx->ai_confidence)->toBeNull();

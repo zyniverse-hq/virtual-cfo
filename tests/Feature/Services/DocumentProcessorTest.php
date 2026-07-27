@@ -1231,7 +1231,8 @@ describe('DocumentProcessor', function () {
                 ->first();
 
             expect($previousBalanceTx)->not->toBeNull()
-                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01')
+                ->and($previousBalanceTx->currency)->toBe($file->company->currency);
         });
 
         it('uses statement period start date for Previous Balance transaction when period uses slash-separated Indian format', function () {
