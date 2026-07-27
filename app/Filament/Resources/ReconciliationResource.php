@@ -149,7 +149,7 @@ class ReconciliationResource extends Resource
                     ->size('sm')
                     ->requiresConfirmation()
                     ->action(function (Transaction $record) {
-                        app(ReconciliationService::class)->rejectAllSuggestions($record);
+                        app(ReconciliationService::class)->rejectAllMatches($record);
 
                         Notification::make()
                             ->title('All suggestions rejected')
