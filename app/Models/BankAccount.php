@@ -93,6 +93,13 @@ class BankAccount extends Model
     }
 
     /**
+     * Scope to the accounts a company can see.
+     *
+     * Unlike CreditCard, bank accounts have no cross-company sharing concept, so
+     * this is a plain company_id filter. It is still required: options loaded
+     * inside filter closures are not covered by Filament's tenant scoping, so
+     * omitting it leaks other companies' accounts.
+     *
      * @param  Builder<BankAccount>  $query
      * @return Builder<BankAccount>
      */

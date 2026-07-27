@@ -368,4 +368,83 @@ describe('TransactionResource', function () {
             ->filterTable('statement_type', ['value' => ''])
             ->assertCanSeeTableRecords([$bankTxn, $cardTxn]);
     });
+
+    it('resolves a StatementType enum instance as the filter value', function () {
+        $tenantId = tenant()->id;
+
+        $card = CreditCard::factory()->create(['company_id' => $tenantId]);
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'company_id' => $tenantId,
+        ]);
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+        $bankTxn = Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        // The Select's EnumStateCast hands the closures a StatementType instance, not a string.
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', ['value' => StatementType::CreditCard])
+            ->assertCanSeeTableRecords([$cardTxn])
+            ->assertCanNotSeeTableRecords([$bankTxn]);
+    });
+
+    it('does not crash when the statement type filter value is invalid', function () {
+        $tenantId = tenant()->id;
+
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $txn = Transaction::factory()->for($file, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', ['value' => 'not-a-real-type'])
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$txn]);
+    });
+
+    it('renders both the type and card indicators when a card subfilter is applied', function () {
+        $tenantId = tenant()->id;
+
+        $card = CreditCard::factory()->create(['company_id' => $tenantId, 'name' => 'HDFC Platinum']);
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'company_id' => $tenantId,
+        ]);
+        Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => $card->id,
+            ])
+            ->assertSuccessful()
+            ->assertSee(StatementType::CreditCard->getLabel())
+            ->assertSee('Card: HDFC Platinum');
+    });
+
+    it('filters by type alone when no card or bank subfilter is chosen', function () {
+        $tenantId = tenant()->id;
+
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+        $bankTxn = Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', ['value' => StatementType::CreditCard->value])
+            ->assertCanSeeTableRecords([$cardTxn])
+            ->assertCanNotSeeTableRecords([$bankTxn]);
+    });
 });

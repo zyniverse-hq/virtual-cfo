@@ -124,7 +124,11 @@ class TransactionResource extends Resource
                             ->label('Type')
                             ->options(StatementType::class)
                             ->placeholder('All types')
-                            ->live(),
+                            ->live()
+                            ->afterStateUpdated(function ($set) {
+                                $set('credit_card_id', null);
+                                $set('bank_account_id', null);
+                            }),
 
                         Forms\Components\Select::make('credit_card_id')
                             ->label('Credit Card')
@@ -134,11 +138,7 @@ class TransactionResource extends Resource
 
                                 return $tenant ? CreditCard::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
                             })
-                            ->visible(function ($get) {
-                                $val = self::normalizeStatementType($get('value'));
-
-                                return $val === StatementType::CreditCard->value;
-                            })
+                            ->visible(fn ($get) => self::resolveStatementType($get('value')) === StatementType::CreditCard)
                             ->searchable(),
 
                         Forms\Components\Select::make('bank_account_id')
@@ -149,28 +149,24 @@ class TransactionResource extends Resource
 
                                 return $tenant ? BankAccount::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
                             })
-                            ->visible(function ($get) {
-                                $val = self::normalizeStatementType($get('value'));
-
-                                return $val === StatementType::Bank->value;
-                            })
+                            ->visible(fn ($get) => self::resolveStatementType($get('value')) === StatementType::Bank)
                             ->searchable(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        $type = self::normalizeStatementType($data['value'] ?? null);
+                        $type = self::resolveStatementType($data['value'] ?? null);
 
-                        if (blank($type)) {
+                        if ($type === null) {
                             return $query;
                         }
 
                         $query->whereHas('importedFile', function (Builder $q) use ($data, $type) {
-                            $q->where('statement_type', $type);
+                            $q->where('statement_type', $type->value);
 
-                            if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                            if ($type === StatementType::CreditCard && ! blank($data['credit_card_id'] ?? null)) {
                                 $q->where('credit_card_id', $data['credit_card_id']);
                             }
 
-                            if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                            if ($type === StatementType::Bank && ! blank($data['bank_account_id'] ?? null)) {
                                 $q->where('bank_account_id', $data['bank_account_id']);
                             }
                         });
@@ -179,14 +175,16 @@ class TransactionResource extends Resource
                     })
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
-                        $type = self::normalizeStatementType($data['value'] ?? null);
+                        $type = self::resolveStatementType($data['value'] ?? null);
 
-                        if (! blank($type)) {
-                            $indicators[] = Tables\Filters\Indicator::make(StatementType::tryFrom($type)?->getLabel())
-                                ->removeField('value');
+                        if ($type === null) {
+                            return $indicators;
                         }
 
-                        if ($type === StatementType::CreditCard->value && ! blank($data['credit_card_id'] ?? null)) {
+                        $indicators[] = Tables\Filters\Indicator::make($type->getLabel())
+                            ->removeField('value');
+
+                        if ($type === StatementType::CreditCard && ! blank($data['credit_card_id'] ?? null)) {
                             $card = CreditCard::find($data['credit_card_id']);
                             if ($card) {
                                 $indicators[] = Tables\Filters\Indicator::make('Card: '.$card->name)
@@ -194,7 +192,7 @@ class TransactionResource extends Resource
                             }
                         }
 
-                        if ($type === StatementType::Bank->value && ! blank($data['bank_account_id'] ?? null)) {
+                        if ($type === StatementType::Bank && ! blank($data['bank_account_id'] ?? null)) {
                             $bank = BankAccount::find($data['bank_account_id']);
                             if ($bank) {
                                 $indicators[] = Tables\Filters\Indicator::make('Bank: '.$bank->name)
@@ -626,10 +624,21 @@ class TransactionResource extends Resource
             ->send();
     }
 
-    private static function normalizeStatementType(mixed $value): ?string
+    /**
+     * Resolve a filter value into a StatementType.
+     *
+     * Filament's enum-backed Select hands closures a StatementType instance via
+     * its EnumStateCast, while raw table-filter state (query string, session)
+     * arrives as a string. Invalid strings resolve to null rather than crashing.
+     */
+    private static function resolveStatementType(mixed $value): ?StatementType
     {
-        if (is_string($value) && ! blank($value)) {
+        if ($value instanceof StatementType) {
             return $value;
+        }
+
+        if (is_string($value) && ! blank($value)) {
+            return StatementType::tryFrom($value);
         }
 
         return null;
