@@ -79,14 +79,23 @@ These hooks run automatically — you do NOT need to run them manually. Register
 
 ### Pre-commit verification
 
-There is no `bin/ci-check.sh` in this repo. Run the checks directly:
+Run `bash bin/ci-check.sh` before every commit. It mirrors the gates in
+`.github/workflows/tests.yml` — syntax, Pint, PHPStan, `composer audit`, and the
+unit/architecture/feature suites — and runs every gate even after one fails, so
+you see all problems in one pass.
 
 ```bash
-vendor/bin/pint --dirty --format agent   # formatting (hook usually handles this)
-vendor/bin/phpstan analyse               # level 6; add --memory-limit=1G if workers crash
-php artisan test --compact --filter=<related>
-composer audit                           # required — CI fails on advisories
+bash bin/ci-check.sh                     # all gates
+bash bin/ci-check.sh --filter=UserTest   # scope the test gates while iterating
+bash bin/ci-check.sh --skip-tests        # static gates only (fast)
+bash bin/ci-check.sh --coverage          # also enforce CI's coverage minimums
 ```
+
+Coverage minimums are off by default because they need a coverage driver and are
+meaningless on a filtered subset. CI always enforces them.
+
+**`composer audit` currently fails on `master`** (symfony advisories). That is
+pre-existing — confirm a failure is yours before chasing it.
 
 ---
 
