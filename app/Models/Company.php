@@ -99,6 +99,18 @@ class Company extends Model
         return $this->hasMany(Connector::class);
     }
 
+    /** @return HasMany<ScheduledTallyExport, $this> */
+    public function scheduledTallyExports(): HasMany
+    {
+        return $this->hasMany(ScheduledTallyExport::class);
+    }
+
+    /** @return HasMany<ScheduledExportRun, $this> */
+    public function scheduledExportRuns(): HasMany
+    {
+        return $this->hasMany(ScheduledExportRun::class);
+    }
+
     /** @return BelongsToMany<CreditCard, $this> */
     public function sharedCreditCards(): BelongsToMany
     {

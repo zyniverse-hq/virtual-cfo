@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\MatchType;
 use App\Filament\Resources\ImportedFileResource\Pages\ViewImportedFile;
 use App\Filament\Resources\ImportedFileResource\RelationManagers\TransactionsRelationManager;
+use App\Models\AccountHead;
+use App\Models\HeadMapping;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 
@@ -96,5 +99,37 @@ describe('ImportedFile Transactions RelationManager', function () {
             'pageClass' => ViewImportedFile::class,
         ])
             ->assertTableActionDoesNotExist('create');
+    });
+
+    it('shows a danger notification and does not create a duplicate mapping rule', function () {
+        $head = AccountHead::factory()->create();
+        $file = ImportedFile::factory()->create();
+        $transaction = Transaction::factory()
+            ->mapped($head)
+            ->for($file, 'importedFile')
+            ->create(['description' => 'SALARY CREDIT']);
+
+        HeadMapping::factory()->create([
+            'company_id' => tenant()->id,
+            'pattern' => 'SALARY CREDIT',
+            'match_type' => MatchType::Contains,
+            'account_head_id' => $head->id,
+        ]);
+
+        $countBefore = HeadMapping::count();
+
+        livewire(TransactionsRelationManager::class, [
+            'ownerRecord' => $file,
+            'pageClass' => ViewImportedFile::class,
+        ])
+            ->callTableAction('create_rule', $transaction, [
+                'pattern' => 'SALARY CREDIT',
+                'match_type' => MatchType::Contains,
+                'account_head_id' => $head->id,
+                'bank_name' => null,
+            ])
+            ->assertNotified('Duplicate rule');
+
+        expect(HeadMapping::count())->toBe($countBefore);
     });
 });

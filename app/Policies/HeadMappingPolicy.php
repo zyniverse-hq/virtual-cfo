@@ -31,4 +31,9 @@ class HeadMappingPolicy
     {
         return $user->currentRole()?->canWrite() ?? false;
     }
+
+    public function deleteAny(User $user): bool
+    {
+        return $user->currentRole()?->canWrite() ?? false;
+    }
 }

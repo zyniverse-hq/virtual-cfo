@@ -74,19 +74,31 @@ describe('Onboarding Tour', function () {
             ->and($steps[0])->toHaveKeys(['title', 'description', 'element']);
     });
 
-    it('loads steps for review-queue tour', function () {
+    it('loads well-formed steps for review-queue tour', function () {
         $component = Livewire::actingAs(asUser())
             ->test(OnboardingTour::class, ['pageId' => 'review-queue']);
 
         $steps = $component->get('steps');
         expect($steps)->not->toBeEmpty();
+
+        foreach ($steps as $step) {
+            expect($step)->toHaveKeys(['title', 'description', 'element'])
+                ->and($step['title'])->not->toBeEmpty()
+                ->and($step['description'])->not->toBeEmpty();
+        }
     });
 
-    it('loads steps for inbound-emails tour', function () {
+    it('loads well-formed steps for inbound-emails tour', function () {
         $component = Livewire::actingAs(asUser())
             ->test(OnboardingTour::class, ['pageId' => 'inbound-emails']);
 
         $steps = $component->get('steps');
         expect($steps)->not->toBeEmpty();
+
+        foreach ($steps as $step) {
+            expect($step)->toHaveKeys(['title', 'description', 'element'])
+                ->and($step['title'])->not->toBeEmpty()
+                ->and($step['description'])->not->toBeEmpty();
+        }
     });
 });

@@ -171,24 +171,14 @@ return [
             'element' => null,
         ],
         [
-            'title' => 'Navigation Tabs',
-            'description' => 'Use these tabs to switch between Unreconciled items (needs review), Flagged items (needs your attention), and previously Reconciled items.',
-            'element' => '.fi-tabs',
-        ],
-        [
-            'title' => 'AI Confidence & Status',
-            'description' => 'Pay attention to the status badges and AI confidence scores. High confidence matches are safer to confirm, while flagged or low confidence items require manual verification.',
+            'title' => 'AI Confidence',
+            'description' => 'Each suggestion carries an AI confidence score. Higher scores are safer to approve, while lower scores deserve a closer look before you accept them.',
             'element' => '.fi-ta-header-cell-ai-confidence',
         ],
         [
-            'title' => 'Confirm vs Reject',
-            'description' => 'Use the Confirm button to accept an AI suggestion, or Reject if it is incorrect. You can also use bulk actions for multiple rows.',
-            'element' => '.fi-ta-actions:first-of-type',
-        ],
-        [
-            'title' => 'Search & Filters',
-            'description' => 'Use the search bar and filter button here to narrow down the queue by specific dates, amounts, or text.',
-            'element' => '.fi-ta-header-toolbar',
+            'title' => 'Approve, Reject or Reassign',
+            'description' => 'Use Approve to accept an AI suggestion, Reject if it is incorrect, or Reassign to pick a different account head. Bulk actions let you handle several rows at once.',
+            'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
         ],
     ],
 

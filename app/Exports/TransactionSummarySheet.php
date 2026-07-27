@@ -140,6 +140,7 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
         return [
             AfterSheet::class => function (AfterSheet $event): void {
                 $sheet = $event->sheet->getDelegate();
+                $sheet->setPrintGridlines(true);
 
                 $hasMetadata = $this->importedFile !== null;
                 $headerRow = $hasMetadata ? 5 : 1;
