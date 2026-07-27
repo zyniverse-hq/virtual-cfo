@@ -383,6 +383,80 @@ describe('HeadMatcherService::resolveAccountHead()', function () {
 
         expect($result)->toBeNull();
     });
+
+    it('name fallback normalizes trailing newline in suggested_head_name before querying', function () {
+        $company = Company::factory()->create();
+        $head = AccountHead::factory()->create([
+            'company_id' => $company->id,
+            'name' => 'Internet Expense',
+            'is_active' => true,
+        ]);
+
+        $file = ImportedFile::factory()->create(['company_id' => $company->id]);
+        $transaction = Transaction::factory()->unmapped()->for($file)->create([
+            'description' => 'MONTHLY INTERNET BILL',
+            'debit' => '999',
+        ]);
+
+        // LLM returns the name with a trailing newline — wrong ID forces the name-fallback path
+        HeadMatcher::fake([
+            [
+                'matches' => [
+                    [
+                        'transaction_id' => $transaction->id,
+                        'suggested_head_id' => 99999,
+                        'suggested_head_name' => "Internet Expense\n",
+                        'confidence' => 0.90,
+                        'reasoning' => 'Internet bill',
+                    ],
+                ],
+            ],
+        ]);
+
+        $service = app(HeadMatcherService::class);
+        $results = $service->matchForFile($file);
+
+        expect($results['ai_matched'])->toBe(1);
+        $transaction->refresh();
+        expect($transaction->account_head_id)->toBe($head->id);
+    });
+
+    it('name fallback normalizes double internal spaces in suggested_head_name before querying', function () {
+        $company = Company::factory()->create();
+        $head = AccountHead::factory()->create([
+            'company_id' => $company->id,
+            'name' => 'Godaddy - Subscription',
+            'is_active' => true,
+        ]);
+
+        $file = ImportedFile::factory()->create(['company_id' => $company->id]);
+        $transaction = Transaction::factory()->unmapped()->for($file)->create([
+            'description' => 'GODADDY DOMAIN RENEWAL',
+            'debit' => '1499',
+        ]);
+
+        // LLM returns double space — wrong ID forces the name-fallback path
+        HeadMatcher::fake([
+            [
+                'matches' => [
+                    [
+                        'transaction_id' => $transaction->id,
+                        'suggested_head_id' => 99999,
+                        'suggested_head_name' => 'Godaddy  - Subscription',
+                        'confidence' => 0.88,
+                        'reasoning' => 'Domain subscription',
+                    ],
+                ],
+            ],
+        ]);
+
+        $service = app(HeadMatcherService::class);
+        $results = $service->matchForFile($file);
+
+        expect($results['ai_matched'])->toBe(1);
+        $transaction->refresh();
+        expect($transaction->account_head_id)->toBe($head->id);
+    });
 });
 
 describe('HeadMatcherService company isolation', function () {

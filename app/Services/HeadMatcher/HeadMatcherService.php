@@ -222,7 +222,8 @@ class HeadMatcherService
 
         // Fallback: lookup by name scoped to this company
         if (isset($match['suggested_head_name'])) {
-            $head = AccountHead::where('name', $match['suggested_head_name'])
+            $normalizedName = (string) preg_replace('/\s+/', ' ', trim($match['suggested_head_name']));
+            $head = AccountHead::where('name', $normalizedName)
                 ->where('company_id', $companyId)
                 ->first();
 
