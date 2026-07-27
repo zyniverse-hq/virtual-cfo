@@ -75,6 +75,18 @@ describe('export base query filtering', function () {
 
         expect($export->query()->count())->toBe(5);
     });
+
+    it('excludes synthetic transactions from the export query even when mapped', function () {
+        $head = AccountHead::factory()->create();
+        $real = Transaction::factory()->mapped($head)->debit(1000)->create();
+        $synthetic = Transaction::factory()->mapped($head)->debit(5000)->create(['is_synthetic' => true]);
+
+        $export = new TransactionCsvExport;
+        $ids = $export->query()->pluck('id')->all();
+
+        expect($ids)->toContain($real->id)
+            ->and($ids)->not->toContain($synthetic->id);
+    });
 });
 
 describe('TransactionCsvExport', function () {
@@ -628,6 +640,18 @@ describe('TransactionSummarySheet', function () {
             ->and($salesRow)->not->toBeNull()
             ->and((float) $salesRow['total_debit'])->toBe(0.0)
             ->and((float) $salesRow['total_credit'])->toBe(5000.0);
+    });
+
+    it('excludes synthetic transactions from summary totals', function () {
+        $head = AccountHead::factory()->create(['name' => 'Purchases']);
+        Transaction::factory()->mapped($head)->debit(1000)->create();
+        Transaction::factory()->mapped($head)->debit(5000)->create(['is_synthetic' => true]);
+
+        $sheet = new TransactionSummarySheet;
+        $row = $sheet->collection()->firstWhere('account_head', 'Purchases');
+
+        expect($row)->not->toBeNull()
+            ->and((float) $row['total_debit'])->toBe(1000.0);
     });
 
     it('writes opening balance row to summary sheet', function () {

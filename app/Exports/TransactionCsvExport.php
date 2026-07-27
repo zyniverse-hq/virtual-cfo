@@ -84,6 +84,8 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
                 ->orderBy('date');
         }
 
+        $query->where('is_synthetic', false);
+
         if ($this->from) {
             $query->whereDate('date', '>=', $this->from);
         }

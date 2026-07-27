@@ -94,6 +94,8 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 ->with('accountHead');
         }
 
+        $query->where('is_synthetic', false);
+
         if ($this->from) {
             $query->whereDate('date', '>=', $this->from);
         }
