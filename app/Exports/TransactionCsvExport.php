@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Exports\Concerns\CalculatesClosingBalance;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\ImportedFile;
@@ -22,6 +23,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  */
 class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents, WithHeadings, WithMapping
 {
+    use CalculatesClosingBalance;
+
     /**
      * @param  Builder<Transaction>|null  $baseQuery
      * @param  array<int, string>|null  $selectedColumns
@@ -94,7 +97,7 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
 
     public function startCell(): string
     {
-        return $this->importedFile ? 'A4' : 'A1';
+        return $this->importedFile ? 'A5' : 'A1';
     }
 
     /**
@@ -140,7 +143,9 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
     {
         return [
             AfterSheet::class => function (AfterSheet $event): void {
-                $this->writeTransactionsMetadata($event->sheet->getDelegate());
+                $sheet = $event->sheet->getDelegate();
+                $this->writeTransactionsMetadata($sheet);
+                $this->writeCsvClosingBalance($sheet);
             },
         ];
     }
@@ -157,7 +162,32 @@ class TransactionCsvExport implements FromQuery, WithCustomStartCell, WithEvents
         $sheet->setCellValue('B2', $this->importedFile->account_holder_name ?? '');
         $sheet->setCellValue('A3', 'Statement Period:');
         $sheet->setCellValue('B3', $this->importedFile->statement_period ?? '');
+        $sheet->setCellValue('A4', 'Opening Balance:');
+        $sheet->setCellValue('B4', $this->importedFile->opening_balance !== null ? (float) $this->importedFile->opening_balance : '');
 
-        $sheet->getStyle('A1:A3')->getFont()->setBold(true);
+        $sheet->getStyle('A1:A4')->getFont()->setBold(true);
+    }
+
+    /**
+     * Append a type-aware closing balance row to the flat CSV export.
+     *
+     * CSV files cannot evaluate formulas, so the value is computed in PHP using
+     * the same directional logic as the Excel sheets.
+     */
+    protected function writeCsvClosingBalance(Worksheet $sheet): void
+    {
+        if ($this->importedFile === null) {
+            return;
+        }
+
+        $closingRow = $sheet->getHighestRow() + 1;
+
+        $sheet->setCellValue("A{$closingRow}", 'Closing Balance');
+        $sheet->setCellValue("B{$closingRow}", $this->closingBalanceValueForFile(
+            $this->importedFile,
+            $this->query()->get(),
+        ));
+
+        $sheet->getStyle("A{$closingRow}:B{$closingRow}")->getFont()->setBold(true);
     }
 }

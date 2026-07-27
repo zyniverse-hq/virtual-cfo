@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Exports\Concerns\AppliesTableStyling;
+use App\Exports\Concerns\CalculatesClosingBalance;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\ImportedFile;
@@ -20,6 +21,7 @@ use Maatwebsite\Excel\Events\AfterSheet;
 class TransactionSummarySheet implements FromCollection, WithCustomStartCell, WithEvents, WithHeadings, WithTitle
 {
     use AppliesTableStyling;
+    use CalculatesClosingBalance;
 
     /** @param Builder<Transaction>|null $baseQuery */
     public function __construct(
@@ -184,7 +186,12 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 if ($hasMetadata) {
                     $closingRow = $totalsRow + 1;
                     $sheet->setCellValue("A{$closingRow}", 'Closing Balance');
-                    $sheet->setCellValue("B{$closingRow}", "=B3+C{$totalsRow}-B{$totalsRow}");
+                    $sheet->setCellValue("B{$closingRow}", $this->closingBalanceFormula(
+                        $this->importedFile->statement_type,
+                        'B3',
+                        "B{$totalsRow}",
+                        "C{$totalsRow}",
+                    ));
                     $sheet->getStyle("{$closingRow}:{$closingRow}")->getFont()->setBold(true);
                     $sheet->getRowDimension($closingRow)->setRowHeight(20);
                 }

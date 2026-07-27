@@ -8,6 +8,7 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
 {
@@ -36,8 +37,8 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                 $this->writeTransactionsMetadata($sheet);
 
                 $hasMetadata = $this->importedFile !== null;
-                $headerRow = $hasMetadata ? 4 : 1;
-                $dataStartRow = $hasMetadata ? 5 : 2;
+                $headerRow = $hasMetadata ? 5 : 1;
+                $dataStartRow = $hasMetadata ? 6 : 2;
 
                 $lastDataRow = $sheet->getHighestRow();
                 $totalsRow = $lastDataRow + 1;
@@ -97,7 +98,7 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                     $sheet->setCellValue("{$creditCol}{$totalsRow}", "=SUM({$creditCol}{$dataStartRow}:{$creditCol}{$lastDataRow})");
                 }
 
-                if (isset($colLetters['balance'], $colLetters['debit'], $colLetters['credit'])) {
+                if (! $hasMetadata && isset($colLetters['balance'], $colLetters['debit'], $colLetters['credit'])) {
                     $balanceCol = $colLetters['balance'];
                     $debitCol = $colLetters['debit'];
                     $creditCol = $colLetters['credit'];
@@ -106,6 +107,10 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
 
                 $sheet->getStyle("A{$headerRow}:{$lastColLetter}{$headerRow}")->getFont()->setBold(true);
                 $sheet->getStyle("A{$totalsRow}:{$lastColLetter}{$totalsRow}")->getFont()->setBold(true);
+
+                if ($hasMetadata) {
+                    $this->writeClosingBalance($sheet, $colLetters, $totalsRow);
+                }
 
                 for ($i = 1; $i <= $totalsRow; $i++) {
                     if ($i >= $dataStartRow && $i <= $lastDataRow && isset($colLetters['description'])) {
@@ -125,6 +130,39 @@ class TransactionDetailSheet extends TransactionCsvExport implements WithTitle
                 );
             },
         ];
+    }
+
+    /**
+     * Write a type-aware closing balance row directly below the totals row.
+     *
+     * Uses a formula referencing the debit/credit totals when both columns are
+     * present, falling back to a computed literal value otherwise.
+     *
+     * @param  array<string, string>  $colLetters
+     */
+    private function writeClosingBalance(Worksheet $sheet, array $colLetters, int $totalsRow): void
+    {
+        $file = $this->importedFile;
+        if ($file === null) {
+            return;
+        }
+
+        $closingRow = $totalsRow + 1;
+        $sheet->setCellValue("A{$closingRow}", 'Closing Balance');
+
+        if (isset($colLetters['debit'], $colLetters['credit'])) {
+            $sheet->setCellValue("B{$closingRow}", $this->closingBalanceFormula(
+                $file->statement_type,
+                'B4',
+                "{$colLetters['debit']}{$totalsRow}",
+                "{$colLetters['credit']}{$totalsRow}",
+            ));
+        } else {
+            $sheet->setCellValue("B{$closingRow}", $this->closingBalanceValueForFile($file, $this->query()->get()));
+        }
+
+        $sheet->getStyle("A{$closingRow}:B{$closingRow}")->getFont()->setBold(true);
+        $sheet->getRowDimension($closingRow)->setRowHeight(20);
     }
 
     /**
