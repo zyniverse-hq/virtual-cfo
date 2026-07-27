@@ -561,28 +561,60 @@ class DocumentProcessor
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
         if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})$/', $date, $m)) {
-            $year = strlen($m[3]) === 2 ? "20{$m[3]}" : $m[3];
-            try {
-                return Carbon::createFromFormat('d/m/Y', "{$m[1]}/{$m[2]}/$year");
-            } catch (\Exception) {
+            $year = $this->expandTwoDigitYear($m[3]);
+            $parsed = $this->parseStrict('d/m/Y', "{$m[1]}/{$m[2]}/$year");
+            if ($parsed !== null) {
+                return $parsed;
             }
         }
 
         // DD-Mon-YYYY or DD Mon YYYY (e.g. "05-Apr-2026", "05 Apr 24")
         if (preg_match('/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-](\d{4}|\d{2})$/', $date, $m)) {
-            $year = strlen($m[3]) === 2 ? "20{$m[3]}" : $m[3];
-            try {
-                return Carbon::createFromFormat('d M Y', "{$m[1]} {$m[2]} $year");
-            } catch (\Exception) {
+            $year = $this->expandTwoDigitYear($m[3]);
+            $parsed = $this->parseStrict('d M Y', "{$m[1]} {$m[2]} $year");
+            if ($parsed !== null) {
+                return $parsed;
             }
         }
 
-        // YYYY-MM-DD (unambiguous ISO format — safe to parse directly)
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            return Carbon::parse($date);
+        // YYYY-MM-DD (unambiguous ISO format) and any other Carbon-parseable string.
+        return Carbon::parse($date);
+    }
+
+    /**
+     * Parse with a fixed format, returning null when the input overflows.
+     *
+     * Carbon::createFromFormat rolls over out-of-range components (e.g. 31/02
+     * becomes 03/02) instead of throwing, so the resulting warnings must be
+     * inspected explicitly to reject malformed input.
+     */
+    private function parseStrict(string $format, string $value): ?Carbon
+    {
+        $parsed = Carbon::createFromFormat($format, $value);
+        $errors = Carbon::getLastErrors();
+
+        if ($parsed && empty($errors['error_count']) && empty($errors['warning_count'])) {
+            return $parsed;
         }
 
-        return Carbon::parse($date);
+        return null;
+    }
+
+    /**
+     * Expand a 2-digit year using a sliding pivot: years up to one ahead of the
+     * current year map to 20xx, anything beyond maps to 19xx. 4-digit years pass through.
+     */
+    private function expandTwoDigitYear(string $year): string
+    {
+        if (strlen($year) !== 2) {
+            return $year;
+        }
+
+        if ((int) "20{$year}" > (int) now()->format('Y') + 1) {
+            return "19{$year}";
+        }
+
+        return "20{$year}";
     }
 
     /**
@@ -633,7 +665,8 @@ class DocumentProcessor
      * Extract the first date substring from a statement period string.
      *
      * Matches human-readable (MonthName DD, YYYY; DD Mon YYYY), ISO (YYYY-MM-DD),
-     * and Indian slash/dash formats (DD/MM/YYYY, DD-MM-YYYY) in that order.
+     * and Indian slash/dash formats (DD/MM/YYYY, DD-MM-YYYY). When several patterns
+     * match, the one at the lowest offset in the string wins (not pattern order).
      */
     private function extractFirstDateFromPeriod(string $statementPeriod): ?string
     {
@@ -642,7 +675,7 @@ class DocumentProcessor
             '/[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:\d{4}|\d{2})/',
             // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-24")
             '/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-](?:\d{4}|\d{2})/',
-            // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
+            // YYYY-MM-DD (ISO)
             '/\d{4}-\d{2}-\d{2}/',
             // DD/MM/YYYY or DD-MM-YYYY (e.g. "01/04/2026", "01-04-24")
             '/\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{4}|\d{2})/',
