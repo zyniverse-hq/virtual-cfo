@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class ReconcileImportedFiles implements ShouldQueue
@@ -19,10 +20,24 @@ class ReconcileImportedFiles implements ShouldQueue
 
     public int $timeout = 600;
 
+    /** @var Collection<int, ImportedFile> */
+    public Collection $invoiceFiles;
+
+    public ?ImportedFile $invoiceFile = null;
+
+    /**
+     * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
+     */
     public function __construct(
         public ImportedFile $bankFile,
-        public ImportedFile $invoiceFile,
-    ) {}
+        ImportedFile|Collection|array $invoiceFiles,
+    ) {
+        $this->invoiceFiles = $invoiceFiles instanceof ImportedFile
+            ? collect([$invoiceFiles])
+            : collect($invoiceFiles);
+
+        $this->invoiceFile = $this->invoiceFiles->first();
+    }
 
     /**
      * @return array<int, object>
@@ -47,11 +62,11 @@ class ReconcileImportedFiles implements ShouldQueue
     public function handle(ReconciliationService $reconciliationService): void
     {
         try {
-            $result = $reconciliationService->reconcile($this->bankFile, $this->invoiceFile);
+            $result = $reconciliationService->reconcile($this->bankFile, $this->invoiceFiles);
 
             Log::info('Reconciliation completed', [
                 'bank_file_id' => $this->bankFile->id,
-                'invoice_file_id' => $this->invoiceFile->id,
+                'invoice_file_ids' => $this->invoiceFiles->pluck('id')->all(),
                 'matched' => $result->matched,
                 'flagged' => $result->flagged,
                 'unreconciled' => $result->unreconciled,
@@ -66,7 +81,7 @@ class ReconcileImportedFiles implements ShouldQueue
         } catch (\Throwable $e) {
             Log::error('Reconciliation failed', [
                 'bank_file_id' => $this->bankFile->id,
-                'invoice_file_id' => $this->invoiceFile->id,
+                'invoice_file_ids' => $this->invoiceFiles->pluck('id')->all(),
                 'error' => $e->getMessage(),
             ]);
 

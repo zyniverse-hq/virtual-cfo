@@ -31,12 +31,14 @@
       "mcp__plugin_laravel-boost_laravel-boost__browser-logs",
       "mcp__plugin_laravel-boost_laravel-boost__last-error",
       "Bash(xargs grep:*)",
-      "Bash(grep -n \"^use\\\\|Actions\\\\\\\\\\\\\\\\Action\\\\|Notifications\\\\\\\\\\\\\\\\Actions\" vendor/filament/notifications/src/Notification.php)",
       "mcp__plugin_laravel-boost_laravel-boost__database-query"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "laravel-boost"
-  ]
+  ],
+  "enabledPlugins": {
+    "laravel-boost@claude-plugins-official": false
+  }
 }

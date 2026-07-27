@@ -275,7 +275,8 @@ class ImportedFileResource extends Resource
             ->headerActions([
                 Actions\CreateAction::make()
                     ->label('Upload Statement')
-                    ->icon('heroicon-o-arrow-up-tray'),
+                    ->icon('heroicon-o-arrow-up-tray')
+                    ->extraAttributes(['class' => 'tour-upload-statement']),
             ])
             ->emptyStateHeading('No imported files yet')
             ->emptyStateDescription('Upload a bank statement, credit card statement, or invoice to get started.')

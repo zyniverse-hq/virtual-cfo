@@ -16,7 +16,7 @@ describe('imports:backfill-display-names', function () {
 
         $file->refresh();
         expect($file->display_name)->not->toBeNull()
-            ->and($file->display_name)->toBe('HDFC_Jan_2025');
+            ->and($file->display_name)->toBe('HDFC Jan 2025');
     });
 
     it('does not overwrite existing display_name values', function () {

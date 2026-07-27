@@ -9,12 +9,16 @@ use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 class TransactionExcelExport implements WithMultipleSheets
 {
-    /** @param Builder<Transaction>|null $baseQuery */
+    /**
+     * @param  Builder<Transaction>|null  $baseQuery
+     * @param  array<int, string>|null  $selectedColumns
+     */
     public function __construct(
         public ?string $from = null,
         public ?string $until = null,
         public ?Builder $baseQuery = null,
         public ?ImportedFile $importedFile = null,
+        public ?array $selectedColumns = null,
     ) {}
 
     /**
@@ -23,7 +27,7 @@ class TransactionExcelExport implements WithMultipleSheets
     public function sheets(): array
     {
         return [
-            new TransactionDetailSheet(from: $this->from, until: $this->until, baseQuery: $this->baseQuery, importedFile: $this->importedFile),
+            new TransactionDetailSheet(from: $this->from, until: $this->until, baseQuery: $this->baseQuery, importedFile: $this->importedFile, selectedColumns: $this->selectedColumns),
             new TransactionSummarySheet(from: $this->from, until: $this->until, baseQuery: $this->baseQuery, importedFile: $this->importedFile),
         ];
     }

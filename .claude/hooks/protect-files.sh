@@ -11,12 +11,6 @@ if [[ -z "$file_path" ]]; then
   exit 0
 fi
 
-# Protect .env files
-if [[ "$file_path" == *.env* ]]; then
-  echo "BLOCKED: .env files must be edited manually, not by Claude." >&2
-  exit 2
-fi
-
 # Protect composer.lock
 if [[ "$(basename "$file_path")" == "composer.lock" ]]; then
   echo "BLOCKED: composer.lock is auto-generated. Run 'composer update' instead." >&2

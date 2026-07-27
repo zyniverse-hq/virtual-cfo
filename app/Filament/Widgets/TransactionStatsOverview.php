@@ -33,7 +33,8 @@ class TransactionStatsOverview extends BaseWidget
             Stat::make('Mapped', "{$mappedPercentage}%")
                 ->description("{$mapped} transactions mapped")
                 ->icon('heroicon-o-check-circle')
-                ->color($mappedPercentage >= 80 ? 'success' : 'warning'),
+                ->color($mappedPercentage >= 80 ? 'success' : 'warning')
+                ->extraAttributes(['class' => 'tour-mapping-stats']),
         ];
     }
 }
