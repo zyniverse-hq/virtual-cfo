@@ -201,27 +201,29 @@ class ImportedFile extends Model
 
     public function getFullBankOrCardName(): string
     {
-        $bankName = $this->bank_name ?? '';
+        $bankName = trim((string) ($this->bank_name ?? ''));
 
         if ($this->statement_type === StatementType::CreditCard) {
             $this->loadMissing('creditCard');
 
-            $baseName = trim((string) ($this->creditCard?->name ?? $bankName));
+            $cardName = trim((string) ($this->creditCard?->name ?? ''));
             $variant = trim((string) $this->card_variant);
 
-            if ($variant === '') {
-                return $baseName;
+            $identity = match (true) {
+                $variant === '' => $cardName,
+                $cardName === '' || stripos($variant, $cardName) !== false => $variant,
+                default => $cardName.' '.$variant,
+            };
+
+            if ($identity === '') {
+                return $bankName;
             }
 
-            if ($baseName === '') {
-                return $variant;
+            if ($bankName !== '' && stripos($identity, $bankName) === false) {
+                return $bankName.' '.$identity;
             }
 
-            if (stripos($variant, $baseName) !== false) {
-                return $variant;
-            }
-
-            return $baseName.' '.$variant;
+            return $identity;
         }
 
         $this->loadMissing('bankAccount');

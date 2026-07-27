@@ -81,11 +81,12 @@ describe('ImportedFileResource view page', function () {
         $file = ImportedFile::factory()->completed()->create([
             'credit_card_id' => $card->id,
             'statement_type' => StatementType::CreditCard,
+            'bank_name' => 'ICICI',
         ]);
 
         livewire(ViewImportedFile::class, ['record' => $file->getRouteKey()])
             ->assertSchemaStateSet([
-                'creditCard.name' => 'ICICI Amazon Pay',
+                'credit_card_display' => 'ICICI Amazon Pay',
             ]);
     });
 });
