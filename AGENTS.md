@@ -63,18 +63,30 @@ When a step fails, diagnose first: **is this an environment error or a code erro
 
 ## Hooks Awareness
 
-These hooks run automatically on every file edit — you do NOT need to run them manually:
+These hooks run automatically — you do NOT need to run them manually. Registered in `.claude/settings.json`:
 
 | Hook | Trigger | What it does |
 |------|---------|-------------|
-| `format-php.sh` | After Edit/Write of `.php` files | Auto-runs Pint formatting |
-| `phpstan-check.sh` | After Edit/Write of non-test `.php` files | Runs PHPStan level 6 |
-| `protect-files.sh` | Before Edit/Write | Blocks changes to `.env`, `composer.lock`, `phpunit.xml`, `docs/schema/*.sql` |
-| `block-dangerous-commands.sh` | Before Bash | Blocks `rm -rf`, `git reset --hard`, force push to main |
+| `protect-files.sh` | Before Edit/Write | Blocks edits to `composer.lock`, `phpunit.xml`, `docs/schema/*.sql` |
+| `format-php.sh` | After Edit/Write | Auto-runs Pint formatting |
+| `phpstan-check.sh` | After Edit/Write of `.php` outside `tests/` | Runs PHPStan level 6 |
 
 **Do not panic** if you see auto-formatting changes after editing PHP. That is the Pint hook. Do not undo these changes.
 
-The CI check in Step 8 (`bash bin/ci-check.sh`) is **project-wide verification** — it runs the full suite, not per-file. This is separate from hooks and still required before commit.
+`.claude/hooks/block-dangerous-commands.sh` exists but is **not registered** in `settings.json` — it does not run. Do not rely on it to catch `rm -rf`, `git reset --hard`, or force pushes.
+
+`.env` is **not** protected by a hook. Never edit it without being asked.
+
+### Pre-commit verification
+
+There is no `bin/ci-check.sh` in this repo. Run the checks directly:
+
+```bash
+vendor/bin/pint --dirty --format agent   # formatting (hook usually handles this)
+vendor/bin/phpstan analyse               # level 6; add --memory-limit=1G if workers crash
+php artisan test --compact --filter=<related>
+composer audit                           # required — CI fails on advisories
+```
 
 ---
 
@@ -92,18 +104,25 @@ cp .env.example .env
 # 3. Generate application key
 php artisan key:generate
 
-# 4. Set ALL database credentials in .env (3 connections required):
-#    DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD         (healthcheck)
-#    SECOND_DB_HOST, SECOND_DB_DATABASE, SECOND_DB_USERNAME, SECOND_DB_PASSWORD  (central)
-#    THIRD_DB_HOST, THIRD_DB_DATABASE, THIRD_DB_USERNAME, THIRD_DB_PASSWORD      (infirmary)
+# 4. Set the PostgreSQL credentials in .env — ONE connection:
+#    DB_CONNECTION=pgsql
+#    DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD
 
 # 5. Clear config cache
 php artisan config:clear
 
-# 6. Do NOT run `git checkout main` — the worktree is already based on main
+# 6. Do NOT run `git checkout master` — the worktree is already based on master
 ```
 
-**Test databases** (defined in `phpunit.xml`): `virtual_cfo_test`. If tests fail with "unknown database", these need to be created in PostgreSQL first — this is an environment error, not a code error.
+**Do not symlink `vendor/`** into a worktree. Composer's `$baseDir` then resolves `App\` to the main checkout, so you silently test `master`'s code instead of the branch's. Run `composer install` in the worktree, or copy `vendor/` outright.
+
+**Test database** (`phpunit.xml`): `virtual_cfo_test` on the `pgsql` connection. If tests fail with "unknown database", create it in PostgreSQL first — that is an environment error, not a code error.
+
+**Use your own test database when running in parallel with other agents.** The shared `virtual_cfo_test` deadlocks and throws misleading `relation "companies" does not exist` errors when two `migrate:fresh` runs overlap. Set `DB_DATABASE=virtual_cfo_test_<something-unique>` and drop it when done.
+
+**The full suite is order-dependent and currently fails on `master`.** `LazilyRefreshDatabase` (`tests/Pest.php`) applies only to `Feature`; `tests/Integration` gets no database trait, so one aborted transaction tears down the schema for the rest of the process. Verify with targeted `--filter` runs. A whole-suite failure is not by itself evidence that your change broke something — reproduce it on `master` before believing it.
+
+**`tests/Integration` never runs in CI** (`.github/workflows/tests.yml` runs only `tests/Unit`, `tests/Architecture`, and `pest tests/Feature`). Tests you add there will not gate any PR.
 
 ---
 
@@ -111,23 +130,34 @@ php artisan config:clear
 
 These are the most critical rules from `.claude/rules/`. The full rule files auto-load based on file path when you edit files — consult them for complete details.
 
+This is a **Filament v5 admin panel**, not a REST API — `routes/api.php` has two routes (the Mailgun inbound-email webhook). Almost all behaviour lives in Filament resources and Livewire components, so write tests against those, not HTTP status codes.
+
 ### Validation
 - **Always** use Form Request classes — never `$request->validate()` inline
-- Authorize via Form Request `authorize()` method or Policy
+- Authorize via Form Request `authorize()` or a Policy
 
 ### Tests
 - Use Pest `describe`/`it` blocks — never `test()`
 - Use factories for database records — never mock models
-- Every mutation test needs 3 assertions: status + response body + side effect
-- Never write `assertOk()`-only tests
+- Never write `assertOk()`-only tests, no config-value assertions, no Reflection-based tests
+- Filament tests must assert real behaviour: form fields, table records, or visible content — `livewire(ListX::class)` renders header widgets and footers too
+- Testing diamond: ~5% static, ~25% unit/arch, ~65% integration, ~5% E2E
 
-### Response Status Codes
-- 200: GET/PUT/PATCH success
-- 201: POST creation success
-- 204: DELETE success (no body)
-- 422: Validation errors only
-- 403: Unauthorized (never "Forbidden.")
-- 409: Business rule violations
+### PostgreSQL migrations (non-negotiable)
+`TEXT` not `VARCHAR(n)` · `TIMESTAMPTZ` not `TIMESTAMP` · `BIGINT GENERATED ALWAYS AS IDENTITY` not `SERIAL` · `JSONB` with a CHECK constraint not `JSON` · **explicit FK indexes** (PostgreSQL does not create them) · partial unique `WHERE deleted_at IS NULL` with soft deletes
+
+### Multi-tenancy — read before touching tenant data
+- Several tables have Row Level Security, but **it is not enforced in practice**: the app connects as `postgres` (a superuser, which bypasses RLS unconditionally, even under `FORCE`), and `SetTenantDatabaseContext` is registered via `authMiddleware()` without `isPersistent: true`, so it never runs on Livewire requests — where the policy fails **open**.
+- Treat Laravel scopes and Filament tenancy as the only real boundary. Apply `visibleToCompany()` (or the equivalent) explicitly; do not assume the database will scope a query for you.
+- `credit_cards` has no RLS at all, by design — it is shared across companies via `sharedCompanies()`.
+
+### Encryption
+`account_number`, `description`, `debit`, `credit`, `balance`, and `raw_data` are encrypted at rest. You cannot `WHERE`/`ORDER BY` them in SQL — filter in PHP after decryption.
+
+### Filament gotchas
+- Table filter state (`$tableFilters`) is an unlocked public Livewire array with **no revalidation against `options()`** — always re-scope and cast values read from it.
+- Duplicate `Action::make('name')` entries both render, but only the last is executable; `assertTableAction*` cannot detect the duplicate.
+- `visible()` on an action **is** a server-side guard (`InteractsWithActions` bails on `isDisabled()`), so it does prevent crafted Livewire calls.
 
 ---
 
