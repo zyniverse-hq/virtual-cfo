@@ -17,6 +17,7 @@ return new class extends Migration
         'budgets',
         'invitations',
         'company_credit_card',
+        'company_user',
     ];
 
     public function up(): void
@@ -83,6 +84,35 @@ return new class extends Migration
                     END
                 )
         ");
+
+        // ── credit_cards (Shared Cards Custom Policy) ───────────────────────
+        DB::statement('ALTER TABLE credit_cards ENABLE ROW LEVEL SECURITY');
+        DB::statement('ALTER TABLE credit_cards FORCE ROW LEVEL SECURITY');
+
+        DB::statement("
+            CREATE POLICY tenant_isolation_credit_cards ON credit_cards
+                USING (
+                    CASE
+                        WHEN current_setting('app.current_company_id', true) IS NULL
+                             OR current_setting('app.current_company_id', true) = ''
+                        THEN true
+                        ELSE company_id = current_setting('app.current_company_id', true)::bigint
+                             OR EXISTS (
+                                 SELECT 1 FROM company_credit_card ccc
+                                 WHERE ccc.credit_card_id = credit_cards.id
+                                   AND ccc.company_id = current_setting('app.current_company_id', true)::bigint
+                             )
+                    END
+                )
+                WITH CHECK (
+                    CASE
+                        WHEN current_setting('app.current_company_id', true) IS NULL
+                             OR current_setting('app.current_company_id', true) = ''
+                        THEN true
+                        ELSE company_id = current_setting('app.current_company_id', true)::bigint
+                    END
+                )
+        ");
     }
 
     public function down(): void
@@ -96,5 +126,9 @@ return new class extends Migration
         DB::statement('DROP POLICY IF EXISTS tenant_isolation_inbound_emails ON inbound_emails');
         DB::statement('ALTER TABLE inbound_emails DISABLE ROW LEVEL SECURITY');
         DB::statement('ALTER TABLE inbound_emails NO FORCE ROW LEVEL SECURITY');
+
+        DB::statement('DROP POLICY IF EXISTS tenant_isolation_credit_cards ON credit_cards');
+        DB::statement('ALTER TABLE credit_cards DISABLE ROW LEVEL SECURITY');
+        DB::statement('ALTER TABLE credit_cards NO FORCE ROW LEVEL SECURITY');
     }
 };

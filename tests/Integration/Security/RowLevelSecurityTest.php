@@ -68,6 +68,7 @@ describe('Row-Level Security', function () {
         Invitation::whereIn('company_id', [$this->companyA->id, $this->companyB->id])->delete();
         // company_credit_card pivot before credit_cards (references credit_card_id FK)
         DB::table('company_credit_card')->whereIn('company_id', [$this->companyA->id, $this->companyB->id])->delete();
+        DB::table('company_user')->whereIn('company_id', [$this->companyA->id, $this->companyB->id])->delete();
         CreditCard::withoutGlobalScopes()->whereIn('company_id', [$this->companyA->id, $this->companyB->id])->forceDelete();
         $this->companyA->forceDelete();
         $this->companyB->forceDelete();
@@ -313,5 +314,93 @@ describe('Row-Level Security', function () {
         DB::unprepared('SET ROLE rls_test_user');
 
         expect(DB::table('company_credit_card')->count())->toBe(1);
+    });
+
+    it('enforces RLS on company_user table', function () {
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+        $this->companyA->users()->attach($userA);
+        $this->companyB->users()->attach($userB);
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        expect(DB::table('company_user')->count())->toBe(1);
+    });
+
+    it('allows reading shared credit_cards via custom USING policy', function () {
+        $cardA = CreditCard::factory()->for($this->companyA)->create();
+        $cardB = CreditCard::factory()->for($this->companyB)->create();
+
+        $sharer = User::factory()->create();
+        DB::table('company_credit_card')->insert([
+            'company_id' => $this->companyB->id,
+            'credit_card_id' => $cardA->id,
+            'shared_by' => $sharer->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyB->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        $visibleIds = DB::table('credit_cards')->pluck('id')->toArray();
+        expect($visibleIds)->toContain($cardA->id)
+            ->and($visibleIds)->toContain($cardB->id)
+            ->and(count($visibleIds))->toBe(2);
+    });
+
+    it('blocks INSERT into wrong tenant via WITH CHECK for all new tables', function () {
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        $tables = [
+            'connectors' => ['provider' => 'test', 'credentials' => '[]'],
+            'recurring_patterns' => ['description_pattern' => 'test'],
+            'duplicate_flags' => ['transaction_id' => 1, 'duplicate_transaction_id' => 2],
+            'budgets' => ['account_head_id' => 1, 'amount' => 100, 'period' => 'monthly'],
+            'inbound_emails' => ['message_id' => 'test', 'sender' => 'test', 'recipient' => 'test', 'subject' => 'test'],
+            'invitations' => ['email' => 'test@test.com', 'role' => 'admin', 'token' => 'test'],
+            'company_credit_card' => ['credit_card_id' => 1, 'shared_by' => 1],
+            'company_user' => ['user_id' => 1],
+            'credit_cards' => ['name' => 'test', 'card_number' => '1234', 'is_active' => true],
+        ];
+
+        foreach ($tables as $table => $data) {
+            DB::beginTransaction();
+            $threw = false;
+
+            try {
+                DB::table($table)->insert(array_merge($data, [
+                    'company_id' => $this->companyB->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]));
+            } catch (QueryException $e) {
+                $threw = true;
+            }
+
+            DB::rollBack();
+            expect($threw)->toBeTrue("Failed to block cross-tenant INSERT on table: {$table}");
+        }
+    });
+
+    // ── Coverage Guard ────────────────────────────────────────────────────────
+
+    it('ensures all tables with company_id have RLS enabled and forced', function () {
+        $tables = DB::select("
+            SELECT c.table_name, pc.relrowsecurity, pc.relforcerowsecurity
+            FROM information_schema.columns c
+            JOIN pg_class pc ON pc.relname = c.table_name
+            WHERE c.column_name = 'company_id'
+              AND c.table_schema = 'public'
+        ");
+
+        expect($tables)->not->toBeEmpty();
+
+        foreach ($tables as $table) {
+            expect($table->relrowsecurity)->toBeTrue("Table {$table->table_name} is missing ENABLE ROW LEVEL SECURITY")
+                ->and($table->relforcerowsecurity)->toBeTrue("Table {$table->table_name} is missing FORCE ROW LEVEL SECURITY");
+        }
     });
 });
