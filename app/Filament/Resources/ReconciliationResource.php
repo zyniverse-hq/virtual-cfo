@@ -139,7 +139,9 @@ class ReconciliationResource extends Resource
                             ->warning()
                             ->send();
                     })
-                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank->isNotEmpty()),
+                    ->visible(fn (Transaction $record) => $record->reconciliationMatchesAsBank
+                        ->whereIn('status', [MatchStatus::Suggested, MatchStatus::Confirmed])
+                        ->isNotEmpty()),
 
                 Actions\ActionGroup::make([
                     Actions\Action::make('manual_match')
