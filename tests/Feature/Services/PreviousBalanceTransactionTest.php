@@ -172,6 +172,64 @@ describe('Previous Balance synthetic transaction', function () {
         expect($synthetic->date->format('Y-m-d'))->toBe('2026-04-05');
     });
 
+    it('ignores a card number followed by a word when extracting the period start date', function () {
+        Storage::put('statements/cc_card_number_prose.pdf', 'fake-pdf-content');
+
+        StatementParser::fake([
+            [
+                'bank_name' => 'ICICI Bank',
+                'statement_period' => 'Card XX1234 Statement 01/04/2024 - 30/04/2024',
+                'previous_balance' => 5000,
+                'transactions' => [
+                    ['date' => '2024-04-15', 'description' => 'PURCHASE', 'debit' => 500, 'balance' => 5500],
+                ],
+            ],
+        ]);
+
+        $file = ImportedFile::factory()->creditCard()->create([
+            'file_path' => 'statements/cc_card_number_prose.pdf',
+            'original_filename' => 'cc_card_number_prose.pdf',
+            'status' => ImportStatus::Pending,
+        ]);
+
+        $this->processor->process($file);
+
+        $synthetic = Transaction::where('imported_file_id', $file->id)
+            ->where('is_synthetic', true)
+            ->first();
+
+        expect($synthetic->date->format('Y-m-d'))->toBe('2024-04-01');
+    });
+
+    it('ignores a date-like phrase in surrounding prose in favour of the real period start', function () {
+        Storage::put('statements/cc_prose_month.pdf', 'fake-pdf-content');
+
+        StatementParser::fake([
+            [
+                'bank_name' => 'ICICI Bank',
+                'statement_period' => 'Invoice 12 Mar 99 ref, period 01/04/2024 to 30/04/2024',
+                'previous_balance' => 6000,
+                'transactions' => [
+                    ['date' => '2024-04-15', 'description' => 'PURCHASE', 'debit' => 500, 'balance' => 6500],
+                ],
+            ],
+        ]);
+
+        $file = ImportedFile::factory()->creditCard()->create([
+            'file_path' => 'statements/cc_prose_month.pdf',
+            'original_filename' => 'cc_prose_month.pdf',
+            'status' => ImportStatus::Pending,
+        ]);
+
+        $this->processor->process($file);
+
+        $synthetic = Transaction::where('imported_file_id', $file->id)
+            ->where('is_synthetic', true)
+            ->first();
+
+        expect($synthetic->date->format('Y-m-d'))->toBe('2024-04-01');
+    });
+
     it('does not create a synthetic transaction when previous_balance is zero', function () {
         Storage::put('statements/cc4.pdf', 'fake-pdf-content');
 
