@@ -261,7 +261,6 @@ describe('Reconciliation Page', function () {
             ->assertTableActionVisible('confirm_suggestion', $bankTxn)
             ->assertTableActionVisible('reject_suggestions', $bankTxn)
             ->assertTableActionExists('confirm_suggestion', record: $bankTxn)
-            ->assertTableActionVisible('confirm_suggestion', $bankTxn)
             ->callTableAction('confirm_suggestion', $bankTxn);
 
         $match->refresh();
