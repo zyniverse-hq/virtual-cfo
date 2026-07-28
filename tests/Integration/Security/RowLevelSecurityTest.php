@@ -300,32 +300,72 @@ describe('Row-Level Security', function () {
         expect(DB::table('invitations')->count())->toBe(1);
     });
 
-    it('enforces RLS on company_credit_card table', function () {
+    // ── Deliberately exempt mapping tables ────────────────────────────────
+    //
+    // company_user and company_credit_card both carry a company_id, but on both it
+    // names a counterparty rather than the owning tenant. Scoping them breaks
+    // features that must read across tenants, so they are exempt by design. These
+    // tests fail if someone puts RLS back on either table.
+
+    it('keeps a users full company membership visible under a tenant context', function () {
+        $user = User::factory()->create();
+        $this->companyA->users()->attach($user);
+        $this->companyB->users()->attach($user);
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        // User::getTenants() reads this join to build the Filament tenant switcher.
+        // Scoping company_user would strip companyB and trap the user in companyA.
+        $companyIds = DB::table('company_user')
+            ->where('user_id', $user->id)
+            ->pluck('company_id')
+            ->all();
+
+        expect($companyIds)->toContain($this->companyA->id)
+            ->and($companyIds)->toContain($this->companyB->id);
+    });
+
+    it('allows an owner to share a card into another company', function () {
         $cardA = CreditCard::factory()->for($this->companyA)->create();
-        $cardB = CreditCard::factory()->for($this->companyB)->create();
+        $sharer = User::factory()->create();
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        // CreditCardResource's share action writes company_id = the *recipient*
+        // while the acting tenant is the owner, via
+        // sharedCompanies()->syncWithoutDetaching(). An owner-only WITH CHECK on
+        // this pivot would reject the whole feature.
+        DB::table('company_credit_card')->insert([
+            'company_id' => $this->companyB->id,
+            'credit_card_id' => $cardA->id,
+            'shared_by' => $sharer->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        expect(DB::table('company_credit_card')->where('credit_card_id', $cardA->id)->count())->toBe(1);
+    });
+
+    it('keeps share rows for owned cards visible to the owner', function () {
+        $cardA = CreditCard::factory()->for($this->companyA)->create();
         $sharer = User::factory()->create();
 
         DB::table('company_credit_card')->insert([
-            ['company_id' => $this->companyA->id, 'credit_card_id' => $cardA->id, 'shared_by' => $sharer->id, 'created_at' => now(), 'updated_at' => now()],
-            ['company_id' => $this->companyB->id, 'credit_card_id' => $cardB->id, 'shared_by' => $sharer->id, 'created_at' => now(), 'updated_at' => now()],
+            'company_id' => $this->companyB->id,
+            'credit_card_id' => $cardA->id,
+            'shared_by' => $sharer->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
         DB::unprepared('SET ROLE rls_test_user');
 
-        expect(DB::table('company_credit_card')->count())->toBe(1);
-    });
-
-    it('enforces RLS on company_user table', function () {
-        $userA = User::factory()->create();
-        $userB = User::factory()->create();
-        $this->companyA->users()->attach($userA);
-        $this->companyB->users()->attach($userB);
-
-        DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
-        DB::unprepared('SET ROLE rls_test_user');
-
-        expect(DB::table('company_user')->count())->toBe(1);
+        // Drives the "Shared With" counter on CreditCardResource, which counts
+        // pivot rows whose company_id is another company.
+        expect(DB::table('company_credit_card')->where('credit_card_id', $cardA->id)->count())->toBe(1);
     });
 
     it('allows reading shared credit_cards via custom USING policy', function () {
@@ -350,57 +390,150 @@ describe('Row-Level Security', function () {
             ->and(count($visibleIds))->toBe(2);
     });
 
-    it('blocks INSERT into wrong tenant via WITH CHECK for all new tables', function () {
+    it('does not let a company modify a card that is only shared with it', function () {
+        $cardA = CreditCard::factory()->for($this->companyA)->create(['name' => 'Owner name']);
+        $sharer = User::factory()->create();
+
+        DB::table('company_credit_card')->insert([
+            'company_id' => $this->companyB->id,
+            'credit_card_id' => $cardA->id,
+            'shared_by' => $sharer->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::unprepared("SET app.current_company_id = '{$this->companyB->id}'");
+        DB::unprepared('SET ROLE rls_test_user');
+
+        // tenant_shared_read_credit_cards exposes the row for reading, but
+        // tenant_isolation_credit_cards keeps writes owner-only, so the UPDATE
+        // matches no rows instead of mutating another company's card.
+        $affected = DB::table('credit_cards')->where('id', $cardA->id)->update(['name' => 'Hijacked']);
+
+        expect($affected)->toBe(0);
+
+        DB::unprepared('RESET ROLE');
+        DB::unprepared("SET app.current_company_id = ''");
+
+        expect(DB::table('credit_cards')->where('id', $cardA->id)->value('name'))->toBe('Owner name');
+    });
+
+    it('blocks cross-tenant INSERT via WITH CHECK on every protected table', function () {
+        // FK targets and NOT NULL values have to be genuinely valid, otherwise the
+        // insert fails on the schema instead of on the policy and the assertion
+        // proves nothing. These are created before any tenant context is set.
+        $headB = AccountHead::factory()->for($this->companyB)->create();
+        $fileB = ImportedFile::factory()->for($this->companyB)->create();
+        $txB1 = Transaction::factory()->for($fileB)->create(['company_id' => $this->companyB->id]);
+        $txB2 = Transaction::factory()->for($fileB)->create(['company_id' => $this->companyB->id]);
+        $inviter = User::factory()->create();
+
+        $payloads = [
+            'connectors' => [
+                'provider' => 'zoho',
+            ],
+            'recurring_patterns' => [
+                'description_pattern' => 'ACME RENT',
+            ],
+            'duplicate_flags' => [
+                'transaction_id' => $txB1->id,
+                'duplicate_transaction_id' => $txB2->id,
+                'confidence' => 'high',
+                'match_reasons' => '[]',
+            ],
+            'budgets' => [
+                'account_head_id' => $headB->id,
+                'period_type' => 'monthly',
+                'amount' => 1000,
+                'financial_year' => '2025-26',
+            ],
+            'inbound_emails' => [
+                'recipient' => 'inbox@example.com',
+                'status' => 'received',
+                'received_at' => now(),
+            ],
+            'invitations' => [
+                'email' => 'invitee@example.com',
+                'role' => 'viewer',
+                'token' => 'rls-with-check-probe',
+                'invited_by' => $inviter->id,
+                'expires_at' => now()->addDay(),
+            ],
+            'credit_cards' => [
+                'name' => 'Cross tenant card',
+                'is_active' => true,
+            ],
+        ];
+
         DB::unprepared("SET app.current_company_id = '{$this->companyA->id}'");
         DB::unprepared('SET ROLE rls_test_user');
 
-        $tables = [
-            'connectors' => ['provider' => 'test', 'credentials' => '[]'],
-            'recurring_patterns' => ['description_pattern' => 'test'],
-            'duplicate_flags' => ['transaction_id' => 1, 'duplicate_transaction_id' => 2],
-            'budgets' => ['account_head_id' => 1, 'amount' => 100, 'period' => 'monthly'],
-            'inbound_emails' => ['message_id' => 'test', 'sender' => 'test', 'recipient' => 'test', 'subject' => 'test'],
-            'invitations' => ['email' => 'test@test.com', 'role' => 'admin', 'token' => 'test'],
-            'company_credit_card' => ['credit_card_id' => 1, 'shared_by' => 1],
-            'company_user' => ['user_id' => 1],
-            'credit_cards' => ['name' => 'test', 'card_number' => '1234', 'is_active' => true],
-        ];
-
-        foreach ($tables as $table => $data) {
+        foreach ($payloads as $table => $payload) {
             DB::beginTransaction();
-            $threw = false;
+            $error = null;
 
             try {
-                DB::table($table)->insert(array_merge($data, [
+                DB::table($table)->insert([
+                    ...$payload,
                     'company_id' => $this->companyB->id,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]));
+                ]);
             } catch (QueryException $e) {
-                $threw = true;
+                $error = $e->getMessage();
             }
 
             DB::rollBack();
-            expect($threw)->toBeTrue("Failed to block cross-tenant INSERT on table: {$table}");
+
+            expect($error)->not->toBeNull("Cross-tenant INSERT into {$table} was not rejected")
+                ->and($error)->toContain('violates row-level security policy');
         }
     });
 
     // ── Coverage Guard ────────────────────────────────────────────────────────
 
-    it('ensures all tables with company_id have RLS enabled and forced', function () {
-        $tables = DB::select("
-            SELECT c.table_name, pc.relrowsecurity, pc.relforcerowsecurity
-            FROM information_schema.columns c
-            JOIN pg_class pc ON pc.relname = c.table_name
-            WHERE c.column_name = 'company_id'
-              AND c.table_schema = 'public'
-        ");
+    it('has row-level security enabled and forced on every tenant-scoped table', function () {
+        // A company_id column alone does not make a table tenant-scoped. On these
+        // two it names a counterparty, and scoping them breaks the tenant switcher
+        // and credit-card sharing — see the exemption tests above. Anything else
+        // that grows a company_id has to be added to the migration, not here.
+        $exempt = ['company_user', 'company_credit_card'];
+
+        // Joined through pg_attribute rather than information_schema so the filter
+        // stays on one catalog: relkind = 'r' excludes views and indexes, and the
+        // namespace comes from the same row as the table, so nothing duplicates.
+        $tables = DB::select(<<<'SQL'
+            SELECT c.relname AS table_name,
+                   c.relrowsecurity,
+                   c.relforcerowsecurity
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid
+            WHERE n.nspname = 'public'
+              AND c.relkind = 'r'
+              AND a.attname = 'company_id'
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY c.relname
+        SQL);
 
         expect($tables)->not->toBeEmpty();
 
+        $unprotected = [];
+
         foreach ($tables as $table) {
-            expect($table->relrowsecurity)->toBeTrue("Table {$table->table_name} is missing ENABLE ROW LEVEL SECURITY")
-                ->and($table->relforcerowsecurity)->toBeTrue("Table {$table->table_name} is missing FORCE ROW LEVEL SECURITY");
+            if (in_array($table->table_name, $exempt, true)) {
+                expect($table->relrowsecurity)
+                    ->toBeFalse("{$table->table_name} is exempt from RLS by design but has it enabled");
+
+                continue;
+            }
+
+            if (! $table->relrowsecurity || ! $table->relforcerowsecurity) {
+                $unprotected[] = $table->table_name;
+            }
         }
+
+        expect($unprotected)->toBe([], 'Tables with a company_id and no forced RLS: '.implode(', ', $unprotected));
     });
 });
