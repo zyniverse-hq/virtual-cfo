@@ -11,6 +11,8 @@ use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\DocumentProcessor\DocumentProcessor;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -237,6 +239,69 @@ describe('DocumentProcessor', function () {
             expect($file->status)->toBe(ImportStatus::Completed)
                 ->and($file->bank_name)->toBe('HDFC Bank')
                 ->and($file->total_rows)->toBe(1);
+        });
+
+        it('regenerates display name dynamically if it was a default fallback', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => Carbon::parse('2025-01-10'),
+            ]);
+
+            $file->update(['display_name' => 'Jan 2025']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            expect($file->display_name)->toBe('HDFC Bank Jan 2025');
+        });
+
+        it('preserves user-supplied display name and does not regenerate', function () {
+            Storage::put('statements/bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => '01 Jan 2025 to 31 Jan 2025',
+                    'transactions' => [
+                        ['date' => '2025-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+                'bank_name' => null,
+                'statement_period' => null,
+                'created_at' => Carbon::parse('2025-01-10'),
+            ]);
+
+            // This explicitly simulates a manual user override that should NOT be touched
+            $file->update(['display_name' => 'My Custom Override']);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+
+            // The display name should NOT update to 'HDFC Bank Jan 2025'
+            expect($file->display_name)->toBe('My Custom Override');
         });
 
         it('routes credit card statement PDFs to StatementParser agent', function () {
@@ -887,7 +952,7 @@ describe('DocumentProcessor', function () {
             $this->processor->process($file);
 
             $file->refresh();
-            expect($file->display_name)->toBe('ICICI Bank_Platinum_Mar_2026');
+            expect($file->display_name)->toBe('ICICI Bank Platinum Mar 2026');
         });
 
         it('preserves user-entered display_name after processing', function () {
@@ -1351,6 +1416,43 @@ describe('DocumentProcessor', function () {
 
             expect($previousBalanceTx)->not->toBeNull()
                 ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-05');
+        });
+    });
+
+    describe('amount-less transaction rows', function () {
+        it('keeps a row with no debit or credit but logs a warning', function () {
+            Storage::put('statements/cc_no_amount.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI Bank',
+                    'statement_period' => 'May 2026',
+                    'transactions' => [
+                        ['date' => '10 May 2026', 'description' => 'AMAZON', 'debit' => 2000, 'balance' => 2000],
+                        ['date' => '11 May 2026', 'description' => 'transaction cashback', 'reference' => '13388720049'],
+                    ],
+                ],
+            ]);
+
+            Log::shouldReceive('warning')
+                ->once()
+                ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'no debit or credit')
+                    && $context['description'] === 'transaction cashback');
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_no_amount.pdf',
+                'original_filename' => 'icici_cc_no_amount.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $cashback = Transaction::where('imported_file_id', $file->id)->get()
+                ->firstWhere('description', 'transaction cashback');
+
+            expect($cashback)->not->toBeNull()
+                ->and($cashback->debit)->toBeNull()
+                ->and($cashback->credit)->toBeNull();
         });
     });
 });

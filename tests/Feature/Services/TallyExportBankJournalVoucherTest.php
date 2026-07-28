@@ -155,3 +155,67 @@ describe('TallyExportService bank/CC journal vouchers', function () {
         expect($xml)->toContain('<BANKALLOCATIONS.LIST>');
     });
 });
+
+describe('TallyExportService bank/CC ledger name fallback', function () {
+    beforeEach(function () {
+        $this->company = Company::factory()->knownDefaults()->create();
+        $this->service = new TallyExportService;
+    });
+
+    it('does not use display_name as the bank/CC ledger name when bank_account is null', function () {
+        $file = ImportedFile::factory()->create([
+            'company_id' => $this->company->id,
+            'bank_account_id' => null,
+            'display_name' => 'ICICI Platinum April 2026',
+        ]);
+        $head = AccountHead::factory()->create(['company_id' => $this->company->id, 'name' => 'Internet Expense']);
+        Transaction::factory()->mapped($head)->debit(299.00)->for($file)->create([
+            'company_id' => $this->company->id,
+            'date' => '2026-03-26',
+        ]);
+
+        $xml = $this->service->exportForFile($file);
+
+        expect($xml)->not->toContain('<LEDGERNAME>ICICI Platinum April 2026</LEDGERNAME>');
+    });
+
+    it('falls back to Bank Account sentinel when bank_account and bank_name are both null', function () {
+        $file = ImportedFile::factory()->create([
+            'company_id' => $this->company->id,
+            'bank_account_id' => null,
+            'display_name' => 'ICICI Platinum April 2026',
+        ]);
+        $head = AccountHead::factory()->create(['company_id' => $this->company->id, 'name' => 'Internet Expense']);
+        Transaction::factory()->mapped($head)->debit(299.00)->for($file)->create([
+            'company_id' => $this->company->id,
+            'date' => '2026-03-26',
+        ]);
+
+        $xml = $this->service->exportForFile($file);
+
+        expect($xml)->toContain('<LEDGERNAME>Bank Account</LEDGERNAME>');
+    });
+
+    it('uses bankAccount name when set, ignoring display_name', function () {
+        $bankAccount = BankAccount::factory()->create([
+            'company_id' => $this->company->id,
+            'name' => 'ICICI Platinum',
+        ]);
+        $file = ImportedFile::factory()->create([
+            'company_id' => $this->company->id,
+            'bank_account_id' => $bankAccount->id,
+            'display_name' => 'ICICI Platinum April 2026',
+        ]);
+        $head = AccountHead::factory()->create(['company_id' => $this->company->id, 'name' => 'Internet Expense']);
+        Transaction::factory()->mapped($head)->debit(299.00)->for($file)->create([
+            'company_id' => $this->company->id,
+            'date' => '2026-03-26',
+        ]);
+
+        $xml = $this->service->exportForFile($file);
+
+        expect($xml)
+            ->toContain('<LEDGERNAME>ICICI Platinum</LEDGERNAME>')
+            ->not->toContain('<LEDGERNAME>ICICI Platinum April 2026</LEDGERNAME>');
+    });
+});

@@ -8,10 +8,13 @@ use App\Filament\Resources\InboundEmailResource\Pages;
 use App\Models\Company;
 use App\Models\InboundEmail;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -67,17 +70,14 @@ class InboundEmailResource extends Resource
                 Tables\Columns\TextColumn::make('received_at')
                     ->label('Date')
                     ->dateTime('d M Y H:i')
-                    ->sortable(),
+                    ->sortable()
+                    ->icon('heroicon-m-calendar'),
 
                 Tables\Columns\TextColumn::make('from_address')
-                    ->label('From')
-                    ->limit(40)
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('subject')
-                    ->label('Subject')
-                    ->limit(50)
-                    ->searchable(),
+                    ->label('Email & Subject')
+                    ->weight(FontWeight::Bold)
+                    ->description(fn (InboundEmail $record): string => str($record->subject)->limit(50)->toString())
+                    ->searchable(['from_address', 'subject']),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
@@ -85,13 +85,18 @@ class InboundEmailResource extends Resource
 
                 Tables\Columns\TextColumn::make('attachment_count')
                     ->label('Attachments')
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->icon('heroicon-m-paper-clip'),
 
                 Tables\Columns\TextColumn::make('processed_count')
                     ->label('Processed')
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->color('success'),
             ])
             ->defaultSort('received_at', 'desc')
+            ->emptyStateHeading('No inbound emails yet')
+            ->emptyStateDescription('Statements sent to your dedicated email address will automatically appear here.')
+            ->emptyStateIcon('heroicon-o-inbox')
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options(InboundEmailStatus::class),
@@ -106,6 +111,11 @@ class InboundEmailResource extends Resource
                             ->when($data['from'], fn (Builder $q, string $date) => $q->whereDate('received_at', '>=', $date))
                             ->when($data['until'], fn (Builder $q, string $date) => $q->whereDate('received_at', '<=', $date));
                     }),
+            ])
+            ->actions([
+                ActionGroup::make([
+                    ViewAction::make(),
+                ])->icon('heroicon-m-ellipsis-vertical'),
             ])
             ->recordUrl(fn (InboundEmail $record): string => static::getUrl('view', ['record' => $record]));
     }

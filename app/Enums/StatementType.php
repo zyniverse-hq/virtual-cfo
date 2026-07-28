@@ -18,4 +18,18 @@ enum StatementType: string implements HasLabel
             self::Invoice => 'Invoice',
         };
     }
+
+    /**
+     * Whether debits increase the running balance for this statement type.
+     *
+     * Credit card statements accrue with debits (charges) and reduce with
+     * credits (payments/refunds); bank statements are the reverse.
+     */
+    public function closingBalanceAddsDebit(): bool
+    {
+        return match ($this) {
+            self::CreditCard => true,
+            self::Bank, self::Invoice => false,
+        };
+    }
 }
