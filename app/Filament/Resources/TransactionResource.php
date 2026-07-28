@@ -238,10 +238,14 @@ class TransactionResource extends Resource
                         false: fn (Builder $query) => $query->where('mapping_type', '!=', MappingType::Unmapped),
                     ),
             ])
+            ->filtersTriggerAction(
+                fn ($action) => $action->extraAttributes(['class' => 'tour-filters-button'])
+            )
             ->actions([
                 Action::make('assign_head')
                     ->label('Assign Head')
                     ->icon('heroicon-o-tag')
+                    ->extraAttributes(['class' => 'tour-assign-head'])
                     ->form([
                         Forms\Components\Select::make('account_head_id')
                             ->label('Account Head')
@@ -478,6 +482,7 @@ class TransactionResource extends Resource
                     ->label('Run AI Matching')
                     ->icon('heroicon-o-cpu-chip')
                     ->color('warning')
+                    ->extraAttributes(['class' => 'tour-ai-matching'])
                     ->requiresConfirmation()
                     ->modalDescription('This will run rule-based and AI matching on all unmapped transactions across all files.')
                     ->action(function () {
@@ -543,6 +548,12 @@ class TransactionResource extends Resource
                                 ->label('From Date'),
                             Forms\Components\DatePicker::make('until')
                                 ->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data, Component $livewire): BinaryFileResponse {
                             $export = new TransactionCsvExport(
@@ -550,6 +561,7 @@ class TransactionResource extends Resource
                                 until: $data['until'] ?? null,
                                 baseQuery: self::resolveExportBaseQuery($livewire),
                                 importedFile: self::resolveExportImportedFile($livewire),
+                                selectedColumns: $data['columns'] ?? null,
                             );
 
                             return Excel::download(
@@ -566,6 +578,12 @@ class TransactionResource extends Resource
                                 ->label('From Date'),
                             Forms\Components\DatePicker::make('until')
                                 ->label('Until Date'),
+                            Forms\Components\CheckboxList::make('columns')
+                                ->label('Columns to Export')
+                                ->options(TransactionCsvExport::availableColumns())
+                                ->default(array_keys(TransactionCsvExport::availableColumns()))
+                                ->columns(3)
+                                ->bulkToggleable(),
                         ])
                         ->action(function (array $data, Component $livewire): BinaryFileResponse {
                             $export = new TransactionExcelExport(
@@ -573,6 +591,7 @@ class TransactionResource extends Resource
                                 until: $data['until'] ?? null,
                                 baseQuery: self::resolveExportBaseQuery($livewire),
                                 importedFile: self::resolveExportImportedFile($livewire),
+                                selectedColumns: $data['columns'] ?? null,
                             );
 
                             return Excel::download(
@@ -584,6 +603,7 @@ class TransactionResource extends Resource
                     ->label('Export')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('success')
+                    ->extraAttributes(['class' => 'tour-export-tally'])
                     ->button(),
             ])
             ->emptyStateHeading('No transactions yet')

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\AggregateService;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
+/**
+ * @property string $name
+ */
 class AccountHead extends Model
 {
     use HasFactory;
@@ -64,6 +68,14 @@ class AccountHead extends Model
         return [
             'is_active' => 'boolean',
         ];
+    }
+
+    /** @return Attribute<string, string> */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            set: fn (string $value) => (string) preg_replace('/\s+/', ' ', trim($value)),
+        );
     }
 
     /** @return BelongsTo<Company, $this> */

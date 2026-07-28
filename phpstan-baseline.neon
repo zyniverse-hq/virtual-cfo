@@ -319,29 +319,6 @@ parameters:
 			count: 1
 			path: app/Services/HeadMatcher/RuleBasedMatcher.php
 
-		-
-			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:reject\(\) expects bool\|\(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|Illuminate\\Database\\Eloquent\\Model, Closure\(App\\Models\\Transaction\)\: bool given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Services/Reconciliation/ReconciliationService.php
-
-		-
-			message: '#^Parameter \#2 \$invoices of method App\\Services\\Reconciliation\\ReconciliationService\:\:matchByAmount\(\) expects Illuminate\\Support\\Collection\<int, App\\Models\\Transaction\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Services/Reconciliation/ReconciliationService.php
-
-		-
-			message: '#^Parameter \#2 \$invoices of method App\\Services\\Reconciliation\\ReconciliationService\:\:matchByAmountAndDate\(\) expects Illuminate\\Support\\Collection\<int, App\\Models\\Transaction\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Services/Reconciliation/ReconciliationService.php
-
-		-
-			message: '#^Parameter \#2 \$invoices of method App\\Services\\Reconciliation\\ReconciliationService\:\:matchByPartyName\(\) expects Illuminate\\Support\\Collection\<int, App\\Models\\Transaction\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Services/Reconciliation/ReconciliationService.php
 
 		-
 			message: '#^Strict comparison using \!\=\= between string and null will always evaluate to true\.$#'

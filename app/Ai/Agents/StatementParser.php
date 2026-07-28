@@ -50,10 +50,12 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
         - Detect the bank name and account number from the header/footer
         - Identify the statement period (start and end dates)
         - Extract the account holder name (individual or company name) from the statement header. Set it as `account_holder_name`. Leave null if not found.
-        - For each transaction, extract: date, description, debit amount, credit amount, and running balance
+        - For each transaction, extract: date, description, debit, credit, and running balance
         - Return each transaction date exactly as it appears in the source document (e.g. "10/03/2026", "05-Apr-2026", "17/03/2026"). Do NOT reformat or convert dates.
-        - Amounts should be numeric (no currency symbols or commas)
-        - If a field is not present, use null
+        - CRITICAL RULE FOR SINGLE-COLUMN AMOUNTS: If both charges and refunds are in a single "Amount" column, an amount with a "CR" suffix (e.g. "9,148.42 CR") is a refund/payment and MUST be placed in the `credit` field. Amounts with no suffix or a "DR" suffix are standard charges and MUST be placed in the `debit` field. Do NOT guess based on the description.
+        - CRITICAL RULE — NEVER DROP AN AMOUNT: Every transaction row you return MUST have a monetary amount in either `debit` or `credit`. Never return a transaction with both `debit` and `credit` empty. Payments, refunds, cashback, rewards, reversals, and lines such as "Payment Received", "Autodebit Payment Recd.", or "transaction cashback" are money coming IN and MUST be captured in `credit`. If you can see a transaction row but are unsure which column its amount belongs in, still capture the amount using the CR/DR rule above — never omit it.
+        - Strip "CR" or "DR" suffixes, currency symbols, and commas when extracting amounts. The final values in the debit and credit fields must be purely positive absolute numbers.
+        - If a non-amount field (reference or balance) is not present, use null. This does NOT apply to the amount — every row must still have a debit or credit per the rule above.
         - Extract reference numbers where available
         - Handle multi-line transaction descriptions by concatenating them
 
