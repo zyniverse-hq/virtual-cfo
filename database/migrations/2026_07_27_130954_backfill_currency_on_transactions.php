@@ -27,4 +27,3 @@ return new class extends Migration
         // No down migration because we cannot reliably determine which ones were previously null
     }
 };
-
