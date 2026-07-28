@@ -154,6 +154,33 @@ describe('HeadMatcher agent', function () {
 });
 
 describe('StatementParser with Agent::fake()', function () {
+    it('instructs the model to handle CR and DR suffixes without minus sign rule', function () {
+        $agent = new StatementParser;
+        $instructions = (string) $agent->instructions();
+
+        expect($instructions)->toContain('CR" suffix')
+            ->and($instructions)->toContain('DR" suffix')
+            ->and($instructions)->not->toContain('minus sign');
+    });
+
+    it('returns structured response mapping CR to credit and unsuffixed to debit', function () {
+        StatementParser::fake([
+            [
+                'bank_name' => 'HDFC Bank',
+                'transactions' => [
+                    ['date' => '2024-01-01', 'description' => 'REFUND', 'credit' => 9148.42, 'debit' => null, 'balance' => 10000],
+                    ['date' => '2024-01-02', 'description' => 'CHARGE', 'credit' => null, 'debit' => 500.00, 'balance' => 9500],
+                ],
+            ],
+        ]);
+
+        $response = (new StatementParser)->prompt('Parse statement');
+
+        expect($response['transactions'][0]['credit'])->toBe(9148.42)
+            ->and($response['transactions'][0]['debit'])->toBeNull()
+            ->and($response['transactions'][1]['debit'])->toBe(500.00)
+            ->and($response['transactions'][1]['credit'])->toBeNull();
+    });
     it('returns structured response with faked data', function () {
         Storage::fake('local');
         Storage::put('statements/test.pdf', 'fake-pdf-content');

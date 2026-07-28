@@ -258,6 +258,8 @@ describe('Reconciliation Page', function () {
         ]);
 
         livewire(ListReconciliation::class)
+            ->assertTableActionExists('confirm_suggestion', record: $bankTxn)
+            ->assertTableActionVisible('confirm_suggestion', $bankTxn)
             ->callTableAction('confirm_suggestion', $bankTxn);
 
         $match->refresh();
@@ -293,12 +295,47 @@ describe('Reconciliation Page', function () {
         ]);
 
         livewire(ListReconciliation::class)
+            ->assertTableActionExists('reject_suggestions', record: $bankTxn)
+            ->assertTableActionVisible('reject_suggestions', $bankTxn)
             ->callTableAction('reject_suggestions', $bankTxn);
 
         $match1->refresh();
         $match2->refresh();
         expect($match1->status)->toBe(MatchStatus::Rejected)
             ->and($match2->status)->toBe(MatchStatus::Rejected);
+    });
+
+    it('displays confirm and reject all inline table actions only when suggestions exist', function () {
+        $bankFile = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Bank,
+        ]);
+        $invoiceFile = ImportedFile::factory()->completed()->create([
+            'statement_type' => StatementType::Invoice,
+        ]);
+
+        $bankTxnWithSuggestion = Transaction::factory()->debit(5000.00)->create([
+            'imported_file_id' => $bankFile->id,
+            'reconciliation_status' => ReconciliationStatus::Unreconciled,
+        ]);
+        $bankTxnWithoutSuggestion = Transaction::factory()->debit(2000.00)->create([
+            'imported_file_id' => $bankFile->id,
+            'reconciliation_status' => ReconciliationStatus::Unreconciled,
+        ]);
+
+        ReconciliationMatch::factory()->suggested()->create([
+            'bank_transaction_id' => $bankTxnWithSuggestion->id,
+            'invoice_transaction_id' => Transaction::factory()->create([
+                'imported_file_id' => $invoiceFile->id,
+            ])->id,
+        ]);
+
+        livewire(ListReconciliation::class)
+            ->assertTableActionExists('confirm_suggestion', record: $bankTxnWithSuggestion)
+            ->assertTableActionVisible('confirm_suggestion', $bankTxnWithSuggestion)
+            ->assertTableActionExists('reject_suggestions', record: $bankTxnWithSuggestion)
+            ->assertTableActionVisible('reject_suggestions', $bankTxnWithSuggestion)
+            ->assertTableActionHidden('confirm_suggestion', $bankTxnWithoutSuggestion)
+            ->assertTableActionHidden('reject_suggestions', $bankTxnWithoutSuggestion);
     });
 
     it('can bulk confirm selected suggested matches', function () {
