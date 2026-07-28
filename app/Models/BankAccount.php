@@ -96,9 +96,15 @@ class BankAccount extends Model
      * Scope to the accounts a company can see.
      *
      * Unlike CreditCard, bank accounts have no cross-company sharing concept, so
-     * this is a plain company_id filter. It is still required: options loaded
-     * inside filter closures are not covered by Filament's tenant scoping, so
-     * omitting it leaks other companies' accounts.
+     * this is a plain company_id filter.
+     *
+     * It is redundant inside the admin panel: BankAccountResource is tenant-scoped,
+     * so Filament registers an `admin_tenancy` global scope that already constrains
+     * every query. It is kept as defense-in-depth for contexts where that scope does
+     * not apply — queued jobs, console commands, and any future panel-less code —
+     * and so callers do not have to depend on Filament internals for isolation.
+     * CreditCard is the opposite case: CreditCardResource sets
+     * $isScopedToTenant = false, so there its scope is the only boundary.
      *
      * @param  Builder<BankAccount>  $query
      * @return Builder<BankAccount>

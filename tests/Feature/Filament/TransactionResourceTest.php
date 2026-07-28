@@ -428,6 +428,179 @@ describe('TransactionResource', function () {
             ->assertSee('Card: HDFC Platinum');
     });
 
+    it('does not leak another company credit card name through the filter indicator', function () {
+        $tenantId = tenant()->id;
+
+        $ownFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $ownTxn = Transaction::factory()->for($ownFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        $foreignCompany = Company::factory()->create();
+        $foreignCard = CreditCard::factory()->create([
+            'company_id' => $foreignCompany->id,
+            'name' => 'Rival Amex Corporate',
+        ]);
+
+        expect($foreignCard->company_id)->toBe($foreignCompany->id);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => $foreignCard->id,
+            ])
+            ->assertSuccessful()
+            ->assertDontSee('Rival Amex Corporate')
+            ->assertCanSeeTableRecords([$ownTxn]);
+    });
+
+    it('ignores an invisible bank account subfilter instead of filtering by it', function () {
+        $foreignCompany = Company::factory()->create();
+        $foreignBankAccount = BankAccount::factory()->create(['name' => 'Rival Current Account']);
+
+        // BankAccountResource is tenant-scoped, so Filament's admin_tenancy hook forces
+        // company_id to the tenant on insert. Reassign it at the query level to build a
+        // genuinely foreign record. Note the global scope means a foreign id could never
+        // leak a name here — what this test pins down is that the query ignores it.
+        BankAccount::withoutGlobalScopes()
+            ->whereKey($foreignBankAccount->id)
+            ->update(['company_id' => $foreignCompany->id]);
+
+        expect(BankAccount::withoutGlobalScopes()->find($foreignBankAccount->id)->company_id)
+            ->toBe($foreignCompany->id);
+
+        $tenantId = tenant()->id;
+
+        $ownFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $ownTxn = Transaction::factory()->for($ownFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::Bank->value,
+                'bank_account_id' => $foreignBankAccount->id,
+            ])
+            ->assertSuccessful()
+            ->assertDontSee('Rival Current Account')
+            ->assertCanSeeTableRecords([$ownTxn]);
+    });
+
+    it('ignores a non-numeric card subfilter value instead of crashing the page', function () {
+        $tenantId = tenant()->id;
+
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+        $bankTxn = Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => 'not-an-id',
+            ])
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$cardTxn])
+            ->assertCanNotSeeTableRecords([$bankTxn]);
+    });
+
+    it('ignores a non-numeric bank subfilter value instead of crashing the page', function () {
+        $tenantId = tenant()->id;
+
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'company_id' => $tenantId,
+        ]);
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $bankTxn = Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::Bank->value,
+                'bank_account_id' => 'not-an-id',
+            ])
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$bankTxn])
+            ->assertCanNotSeeTableRecords([$cardTxn]);
+    });
+
+    it('ignores a card subfilter value too large for a bigint column', function () {
+        $tenantId = tenant()->id;
+
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'company_id' => $tenantId,
+        ]);
+        $cardTxn = Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => '9999999999999999999999',
+            ])
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$cardTxn]);
+    });
+
+    it('shows the indicator for a soft deleted card so the filter stays removable', function () {
+        $tenantId = tenant()->id;
+
+        $card = CreditCard::factory()->create(['company_id' => $tenantId, 'name' => 'Retired ICICI Card']);
+        $cardFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'company_id' => $tenantId,
+        ]);
+        Transaction::factory()->for($cardFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        $card->delete();
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::CreditCard->value,
+                'credit_card_id' => $card->id,
+            ])
+            ->assertSuccessful()
+            ->assertSee('Card: Retired ICICI Card');
+    });
+
+    it('shows the indicator for a soft deleted bank account so the filter stays removable', function () {
+        $tenantId = tenant()->id;
+
+        $bankAccount = BankAccount::factory()->create([
+            'company_id' => $tenantId,
+            'name' => 'Closed HDFC Account',
+        ]);
+        $bankFile = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_account_id' => $bankAccount->id,
+            'company_id' => $tenantId,
+        ]);
+        Transaction::factory()->for($bankFile, 'importedFile')->create(['company_id' => $tenantId]);
+
+        $bankAccount->delete();
+
+        livewire(ListTransactions::class)
+            ->filterTable('statement_type', [
+                'value' => StatementType::Bank->value,
+                'bank_account_id' => $bankAccount->id,
+            ])
+            ->assertSuccessful()
+            ->assertSee('Bank: Closed HDFC Account');
+    });
+
     it('filters by type alone when no card or bank subfilter is chosen', function () {
         $tenantId = tenant()->id;
 

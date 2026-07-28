@@ -159,43 +159,51 @@ class TransactionResource extends Resource
                             return $query;
                         }
 
-                        $query->whereHas('importedFile', function (Builder $q) use ($data, $type) {
+                        $card = $type === StatementType::CreditCard
+                            ? self::resolveVisibleCreditCard($data['credit_card_id'] ?? null)
+                            : null;
+
+                        $bankAccount = $type === StatementType::Bank
+                            ? self::resolveVisibleBankAccount($data['bank_account_id'] ?? null)
+                            : null;
+
+                        return $query->whereHas('importedFile', function (Builder $q) use ($type, $card, $bankAccount) {
                             $q->where('statement_type', $type->value);
 
-                            if ($type === StatementType::CreditCard && ! blank($data['credit_card_id'] ?? null)) {
-                                $q->where('credit_card_id', $data['credit_card_id']);
+                            if ($card !== null) {
+                                $q->where('credit_card_id', $card->id);
                             }
 
-                            if ($type === StatementType::Bank && ! blank($data['bank_account_id'] ?? null)) {
-                                $q->where('bank_account_id', $data['bank_account_id']);
+                            if ($bankAccount !== null) {
+                                $q->where('bank_account_id', $bankAccount->id);
                             }
                         });
-
-                        return $query;
                     })
                     ->indicateUsing(function (array $data): array {
-                        $indicators = [];
                         $type = self::resolveStatementType($data['value'] ?? null);
 
                         if ($type === null) {
-                            return $indicators;
+                            return [];
                         }
 
-                        $indicators[] = Tables\Filters\Indicator::make($type->getLabel())
-                            ->removeField('value');
+                        $indicators = [
+                            Tables\Filters\Indicator::make($type->getLabel())->removeField('value'),
+                        ];
 
-                        if ($type === StatementType::CreditCard && ! blank($data['credit_card_id'] ?? null)) {
-                            $card = CreditCard::find($data['credit_card_id']);
-                            if ($card) {
-                                $indicators[] = Tables\Filters\Indicator::make('Card: '.$card->name)
+                        if ($type === StatementType::CreditCard) {
+                            $card = self::resolveVisibleCreditCard($data['credit_card_id'] ?? null);
+
+                            if ($card !== null) {
+                                $indicators[] = Tables\Filters\Indicator::make("Card: {$card->name}")
                                     ->removeField('credit_card_id');
                             }
                         }
 
-                        if ($type === StatementType::Bank && ! blank($data['bank_account_id'] ?? null)) {
-                            $bank = BankAccount::find($data['bank_account_id']);
-                            if ($bank) {
-                                $indicators[] = Tables\Filters\Indicator::make('Bank: '.$bank->name)
+                        if ($type === StatementType::Bank) {
+                            $bankAccount = self::resolveVisibleBankAccount($data['bank_account_id'] ?? null);
+
+                            if ($bankAccount !== null) {
+                                $indicators[] = Tables\Filters\Indicator::make("Bank: {$bankAccount->name}")
                                     ->removeField('bank_account_id');
                             }
                         }
@@ -642,6 +650,69 @@ class TransactionResource extends Resource
         }
 
         return null;
+    }
+
+    /**
+     * Resolve raw subfilter state into a credit card the current tenant may see.
+     *
+     * Table filter state is client-writable and is never revalidated against the
+     * Select's options, so the value may be another company's key or a non-numeric
+     * string. Either yields null, making the subfilter a no-op instead of leaking a
+     * name or crashing the page on a bigint cast. Soft-deleted cards still resolve,
+     * so their indicator stays visible and removable.
+     *
+     * Array-shaped state is not covered here — Filament's OptionStateCast fails on
+     * it before any filter closure runs, for every single Select in the panel.
+     */
+    private static function resolveVisibleCreditCard(mixed $value): ?CreditCard
+    {
+        $id = self::resolveSubfilterId($value);
+        /** @var Company|null $tenant */
+        $tenant = Filament::getTenant();
+
+        if ($id === null || $tenant === null) {
+            return null;
+        }
+
+        return CreditCard::withTrashed()
+            ->visibleToCompany($tenant->id)
+            ->whereKey($id)
+            ->first();
+    }
+
+    /**
+     * Resolve raw subfilter state into a bank account the current tenant may see.
+     *
+     * @see self::resolveVisibleCreditCard() for why the state cannot be trusted.
+     */
+    private static function resolveVisibleBankAccount(mixed $value): ?BankAccount
+    {
+        $id = self::resolveSubfilterId($value);
+        /** @var Company|null $tenant */
+        $tenant = Filament::getTenant();
+
+        if ($id === null || $tenant === null) {
+            return null;
+        }
+
+        return BankAccount::withTrashed()
+            ->visibleToCompany($tenant->id)
+            ->whereKey($id)
+            ->first();
+    }
+
+    /**
+     * Narrow untrusted subfilter state to a positive integer key, or null.
+     */
+    private static function resolveSubfilterId(mixed $value): ?int
+    {
+        if (! is_string($value) && ! is_int($value)) {
+            return null;
+        }
+
+        $id = filter_var($value, FILTER_VALIDATE_INT);
+
+        return $id !== false && $id > 0 ? $id : null;
     }
 
     /** @return Builder<Transaction>|null */
