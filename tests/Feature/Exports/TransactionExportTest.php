@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\MappingType;
+use App\Enums\StatementType;
 use App\Exports\TransactionCsvExport;
 use App\Exports\TransactionExcelExport;
 use App\Exports\TransactionSummarySheet;
 use App\Models\AccountHead;
 use App\Models\Company;
+use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -190,7 +192,7 @@ describe('TransactionCsvExport', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $sheet = $spreadsheet->getActiveSheet();
 
-        expect($sheet->getCell('A1')->getValue())->toBe('Bank:')
+        expect($sheet->getCell('A1')->getValue())->toBe('Account:')
             ->and($sheet->getCell('B1')->getValue())->toBe('HDFC Bank')
             ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($sheet->getCell('B2')->getValue())->toBe('Zysk Technologies')
@@ -261,6 +263,70 @@ describe('TransactionCsvExport', function () {
         // Credit card: opening + debit - credit = 5000 + 1000 - 2000 = 4000
         expect($sheet->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance')
             ->and((float) $sheet->getCell("B{$lastRow}")->getCalculatedValue())->toBe(4000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes metadata header rows for credit card statement with variant dedup', function () {
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'Amazon Pay ICICI Bank Credit Card',
+            'account_holder_name' => 'John Doe',
+            'statement_period' => 'May 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/transactions-meta-cc.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Card:')
+            ->and($sheet->getCell('B1')->getValue())->toBe('Amazon Pay ICICI Bank Credit Card')
+            ->and($sheet->getCell('A2')->getValue())->toBe('Account Holder:')
+            ->and($sheet->getCell('B2')->getValue())->toBe('John Doe');
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('falls back to the credit card name when card_variant is null', function () {
+        $card = CreditCard::factory()->create(['name' => 'Rubyx']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => null,
+            'account_holder_name' => 'John Doe',
+            'statement_period' => 'May 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/transactions-meta-cc-fallback.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Card:')
+            ->and($sheet->getCell('B1')->getValue())->toBe('ICICI Bank Rubyx');
 
         Storage::disk('local')->delete($path);
     });
@@ -353,7 +419,7 @@ describe('TransactionDetailSheet', function () {
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $ws = $spreadsheet->getSheetByName('Transactions');
 
-        expect($ws->getCell('A1')->getValue())->toBe('Bank:')
+        expect($ws->getCell('A1')->getValue())->toBe('Account:')
             ->and($ws->getCell('B1')->getValue())->toBe('ICICI Bank')
             ->and($ws->getCell('A2')->getValue())->toBe('Account Holder:')
             ->and($ws->getCell('B2')->getValue())->toBe('Rahul Sharma')
@@ -678,6 +744,61 @@ describe('TransactionSummarySheet', function () {
 
         expect($ws->getCell('A3')->getValue())->toBe('Opening Balance:')
             ->and((float) $ws->getCell('B3')->getValue())->toBe(10000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('labels summary sheet A1 as Account and shows the bank name for bank statements', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_name' => 'HDFC Bank',
+            'account_holder_name' => null,
+            'statement_period' => 'Apr 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/summary-label-bank.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getCell('A1')->getValue())->toBe('Account:')
+            ->and($ws->getCell('B1')->getValue())->toBe('HDFC Bank');
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('labels summary sheet A1 as Card and shows the card product name for credit card statements', function () {
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'Platinum',
+            'account_holder_name' => 'MR VARUN CHANDER',
+            'statement_period' => 'Apr 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/summary-label-card.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getCell('A1')->getValue())->toBe('Card:')
+            ->and($ws->getCell('B1')->getValue())->toBe('ICICI Bank Platinum — MR VARUN CHANDER');
 
         Storage::disk('local')->delete($path);
     });
