@@ -1061,6 +1061,134 @@ describe('DocumentProcessor', function () {
             $transaction = Transaction::where('imported_file_id', $file->id)->first();
             expect($transaction->date->format('Y-m-d'))->toBe('2026-05-03');
         });
+
+        it('correctly parses dates with 2-digit years into 4-digit years', function () {
+            Storage::put('statements/two_digit_year.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'SBI',
+                    'statement_period' => 'May 2024',
+                    'transactions' => [
+                        ['date' => '15/01/24', 'description' => 'NEFT PAYMENT', 'debit' => 2000],
+                        ['date' => '15-Jan-24', 'description' => 'NEFT PAYMENT 2', 'debit' => 2000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/two_digit_year.pdf',
+                'original_filename' => 'sbi_two_digit.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->orderBy('id')->get();
+            expect($transactions[0]->date->format('Y-m-d'))->toBe('2024-01-15');
+            expect($transactions[1]->date->format('Y-m-d'))->toBe('2024-01-15');
+        });
+
+        it('skips a row whose date has out-of-range components and imports the rest', function () {
+            Storage::put('statements/overflow_slash.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Apr 2024',
+                    'transactions' => [
+                        ['date' => '01/04/2024', 'description' => 'VALID FIRST', 'debit' => 1000],
+                        // April has 30 days — Carbon rolls this to 01/05 instead of failing
+                        ['date' => '31/04/2024', 'description' => 'OUT OF RANGE', 'debit' => 2000],
+                        ['date' => '30/04/2024', 'description' => 'VALID LAST', 'credit' => 3000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/overflow_slash.pdf',
+                'original_filename' => 'hdfc_overflow.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            $transactions = Transaction::where('imported_file_id', $file->id)->get();
+
+            expect($file->status)->toBe(ImportStatus::Completed)
+                ->and($file->total_rows)->toBe(2)
+                ->and($transactions)->toHaveCount(2)
+                ->and($transactions->firstWhere('description', 'OUT OF RANGE'))->toBeNull()
+                ->and($transactions->pluck('description')->all())->toEqualCanonicalizing(['VALID FIRST', 'VALID LAST']);
+        });
+
+        it('rejects out-of-range dash-separated dates instead of rolling them over', function () {
+            Storage::put('statements/overflow_dash.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Apr 2024',
+                    'transactions' => [
+                        ['date' => '01-04-2024', 'description' => 'VALID ONLY', 'debit' => 1000],
+                        // Would silently roll to 2024-05-01
+                        ['date' => '31-04-2024', 'description' => 'DASH OUT OF RANGE', 'debit' => 2000],
+                        // Would silently roll to 2024-03-02
+                        ['date' => '31-Feb-24', 'description' => 'MONTH NAME OUT OF RANGE', 'debit' => 3000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/overflow_dash.pdf',
+                'original_filename' => 'hdfc_overflow_dash.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $file->refresh();
+            $transactions = Transaction::where('imported_file_id', $file->id)->get();
+
+            expect($file->status)->toBe(ImportStatus::Completed)
+                ->and($file->total_rows)->toBe(1)
+                ->and($transactions)->toHaveCount(1)
+                ->and($transactions->first()->description)->toBe('VALID ONLY')
+                ->and($transactions->pluck('date')->map->format('Y-m-d')->all())->toBe(['2024-04-01']);
+        });
+
+        it('maps a 2-digit year beyond next year to the previous century', function () {
+            Carbon::setTestNow(Carbon::create(2026, 7, 28, 12, 0, 0, 'UTC'));
+
+            Storage::put('statements/pivot.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'SBI',
+                    'statement_period' => 'Apr 2027',
+                    'transactions' => [
+                        ['date' => '01/04/27', 'description' => 'NEXT YEAR', 'debit' => 1000],
+                        ['date' => '01/04/28', 'description' => 'BEYOND NEXT YEAR', 'debit' => 2000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/pivot.pdf',
+                'original_filename' => 'sbi_pivot.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->get();
+
+            expect($transactions->firstWhere('description', 'NEXT YEAR')->date->format('Y-m-d'))->toBe('2027-04-01')
+                ->and($transactions->firstWhere('description', 'BEYOND NEXT YEAR')->date->format('Y-m-d'))->toBe('1928-04-01');
+
+            Carbon::setTestNow();
+        });
     });
 
     describe('account_holder_name and opening_balance extraction', function () {

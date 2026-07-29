@@ -12,6 +12,7 @@ use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\DisplayNameGenerator;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -462,7 +463,6 @@ class DocumentProcessor
         DB::transaction(function () use ($file, $bankName, $accountNumber, $accountHolderName, $statementPeriod, $cardVariant, $transactions, $previousBalance) {
             $fileUpdates = [
                 'status' => ImportStatus::Completed,
-                'total_rows' => count($transactions),
                 'mapped_rows' => 0,
                 'processed_at' => now(),
             ];
@@ -502,7 +502,21 @@ class DocumentProcessor
                 $fileUpdates['card_variant'] = $cardVariant;
             }
 
+            $imported = 0;
+
             foreach ($transactions as $row) {
+                try {
+                    $date = $this->parseTransactionDate($row['date']);
+                } catch (\Throwable $e) {
+                    Log::warning('Skipping statement transaction row with unparseable date', [
+                        'imported_file_id' => $file->id,
+                        'date' => $row['date'] ?? null,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    continue;
+                }
+
                 $debit = isset($row['debit']) && (float) $row['debit'] > 0 ? (string) $row['debit'] : null;
                 $credit = isset($row['credit']) && (float) $row['credit'] > 0 ? (string) $row['credit'] : null;
 
@@ -517,7 +531,7 @@ class DocumentProcessor
                 Transaction::create([
                     'company_id' => $file->company_id,
                     'imported_file_id' => $file->id,
-                    'date' => $this->parseTransactionDate($row['date']),
+                    'date' => $date,
                     'description' => $row['description'] ?? '',
                     'reference_number' => $row['reference'] ?? null,
                     'debit' => $debit,
@@ -527,7 +541,11 @@ class DocumentProcessor
                     'raw_data' => $row,
                     'bank_format' => $bankName,
                 ]);
+
+                $imported++;
             }
+
+            $fileUpdates['total_rows'] = $imported;
 
             /** @var StatementType $statementType */
             $statementType = $file->statement_type;
@@ -549,7 +567,7 @@ class DocumentProcessor
                     'is_synthetic' => true,
                 ]);
 
-                $fileUpdates['total_rows'] = count($transactions) + 1;
+                $fileUpdates['total_rows'] = $imported + 1;
             }
 
             $file->loadMissing(['creditCard', 'bankAccount']);
@@ -567,32 +585,70 @@ class DocumentProcessor
         });
     }
 
+    /**
+     * @throws InvalidFormatException when the date cannot be parsed
+     */
     private function parseTransactionDate(string $date): Carbon
     {
         $date = trim($date);
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
-        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $date, $m)) {
-            try {
-                return Carbon::createFromFormat('d/m/Y', "{$m[1]}/{$m[2]}/{$m[3]}");
-            } catch (\Exception) {
-            }
+        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})$/', $date, $m)) {
+            $year = $this->expandTwoDigitYear($m[3]);
+
+            return $this->parseExactOrFail('d/m/Y', "{$m[1]}/{$m[2]}/{$year}", $date);
         }
 
-        // DD-Mon-YYYY or DD Mon YYYY (e.g. "05-Apr-2026", "05 Apr 2026")
-        if (preg_match('/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-](\d{4})$/', $date)) {
-            try {
-                return Carbon::createFromFormat('d M Y', preg_replace('/[\-]/', ' ', $date));
-            } catch (\Exception) {
-            }
+        // DD-Mon-YYYY or DD Mon YYYY (e.g. "05-Apr-2026", "05 Apr 24")
+        if (preg_match('/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-](\d{4}|\d{2})$/', $date, $m)) {
+            $year = $this->expandTwoDigitYear($m[3]);
+
+            return $this->parseExactOrFail('d M Y', "{$m[1]} {$m[2]} {$year}", $date);
         }
 
-        // YYYY-MM-DD (unambiguous ISO format — safe to parse directly)
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            return Carbon::parse($date);
-        }
-
+        // YYYY-MM-DD (unambiguous ISO format) and any other Carbon-parseable string.
         return Carbon::parse($date);
+    }
+
+    /**
+     * Parse with a fixed format, rejecting out-of-range components.
+     *
+     * Carbon::createFromFormat rolls over out-of-range components (e.g. 31/02
+     * becomes 03/02) instead of failing, so the resulting warnings must be
+     * inspected explicitly. Both Indian-format branches return through here so
+     * that a slash-separated date and its dash-separated equivalent are treated
+     * identically — falling through to Carbon::parse would reject only the
+     * slash form and silently roll the dash form over.
+     *
+     * @throws InvalidFormatException
+     */
+    private function parseExactOrFail(string $format, string $value, string $original): Carbon
+    {
+        $parsed = Carbon::createFromFormat($format, $value);
+        $errors = Carbon::getLastErrors();
+
+        if ($parsed && empty($errors['error_count']) && empty($errors['warning_count'])) {
+            return $parsed;
+        }
+
+        throw new InvalidFormatException("Could not parse '{$original}': date components are out of range.");
+    }
+
+    /**
+     * Expand a 2-digit year using a sliding pivot: years up to one ahead of the
+     * current year map to 20xx, anything beyond maps to 19xx. 4-digit years pass through.
+     */
+    private function expandTwoDigitYear(string $year): string
+    {
+        if (strlen($year) !== 2) {
+            return $year;
+        }
+
+        if ((int) "20{$year}" > (int) now()->format('Y') + 1) {
+            return "19{$year}";
+        }
+
+        return "20{$year}";
     }
 
     /**
@@ -643,19 +699,22 @@ class DocumentProcessor
      * Extract the first date substring from a statement period string.
      *
      * Matches human-readable (MonthName DD, YYYY; DD Mon YYYY), ISO (YYYY-MM-DD),
-     * and Indian slash/dash formats (DD/MM/YYYY, DD-MM-YYYY) in that order.
+     * and Indian slash/dash formats (DD/MM/YYYY, DD-MM-YYYY). When several patterns
+     * match, the one at the lowest offset in the string wins (not pattern order).
      */
     private function extractFirstDateFromPeriod(string $statementPeriod): ?string
     {
+        $month = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
+
         $patterns = [
             // MonthName DD, YYYY (e.g. "March 6, 2026") — full English month name, day-after
-            '/[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/',
+            "/{$month}\s+\d{1,2},?\s+\d{4}/i",
             // DD Mon YYYY or DD-Mon-YYYY (e.g. "01 Apr 2026", "01-Apr-2026")
-            '/\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{4}/',
-            // YYYY-MM-DD (ISO — check before DD-MM-YYYY to avoid ambiguity)
+            "/\d{1,2}[\s\-]{$month}[\s\-]\d{4}/i",
+            // YYYY-MM-DD (ISO)
             '/\d{4}-\d{2}-\d{2}/',
-            // DD/MM/YYYY or DD-MM-YYYY (Indian numeric formats)
-            '/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/',
+            // DD/MM/YYYY or DD-MM-YYYY, with an optional 2-digit year (e.g. "01/04/2026", "01-04-24")
+            '/\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{4}|\d{2})/',
         ];
 
         $bestMatch = null;
