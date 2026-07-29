@@ -6,7 +6,9 @@ use App\Filament\Resources\AccountHeadResource\Pages\EditAccountHead;
 use App\Filament\Resources\AccountHeadResource\Pages\ListAccountHeads;
 use App\Filament\Resources\TransactionResource;
 use App\Models\AccountHead;
+use App\Models\HeadMapping;
 use App\Models\Transaction;
+use App\Models\TransactionAggregate;
 
 use function Pest\Livewire\livewire;
 
@@ -289,6 +291,114 @@ describe('AccountHeadResource', function () {
 
         expect(AccountHead::find($head->id))->not->toBeNull();
         expect(AccountHead::find($head2->id))->not->toBeNull();
+    });
+
+    it('reports every blocked head when bulk deleting several mapped heads', function () {
+        $alpha = AccountHead::factory()->create(['name' => 'Alpha Head']);
+        Transaction::factory()->mapped($alpha)->count(1)->create();
+
+        $beta = AccountHead::factory()->create(['name' => 'Beta Head']);
+        HeadMapping::factory()->count(2)->create([
+            'company_id' => tenant()->id,
+            'account_head_id' => $beta->id,
+        ]);
+
+        livewire(ListAccountHeads::class)
+            ->callTableBulkAction('delete', [$alpha, $beta])
+            ->assertNotified("Cannot bulk delete — 'Alpha Head' (1 transaction) and 'Beta Head' (2 rules) have mapped records. Reassign them first.");
+
+        expect(AccountHead::find($alpha->id))->not->toBeNull()
+            ->and(AccountHead::find($beta->id))->not->toBeNull();
+    });
+
+    it('offers manual reassignment when a head has both transactions and rules', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(1)->create();
+        HeadMapping::factory()->create([
+            'company_id' => tenant()->id,
+            'account_head_id' => $head->id,
+        ]);
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'manual',
+            ])
+            ->assertHasNoTableActionErrors()
+            ->assertRedirect(TransactionResource::getUrl('index', [
+                'tableFilters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+                'filters' => [
+                    'account_head_id' => ['value' => (string) $head->id],
+                ],
+            ]));
+
+        expect(AccountHead::find($head->id))->not->toBeNull();
+    });
+
+    it('reassigns every transaction for a head with many mapped transactions', function () {
+        $head = AccountHead::factory()->create();
+        $replacement = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->count(25)->create();
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'bulk',
+                'replacement_head_id' => $replacement->id,
+            ])
+            ->assertSuccessful();
+
+        expect(Transaction::where('account_head_id', $replacement->id)->count())->toBe(25)
+            ->and(Transaction::where('account_head_id', $head->id)->count())->toBe(0)
+            ->and(AccountHead::find($head->id))->toBeNull();
+    });
+
+    it('moves transaction aggregates to the replacement head after bulk reassignment', function () {
+        $company = tenant();
+        $head = AccountHead::factory()->create(['company_id' => $company->id]);
+        $replacement = AccountHead::factory()->create(['company_id' => $company->id]);
+
+        Transaction::factory()->mapped($head)->debit(5000)->create([
+            'company_id' => $company->id,
+            'date' => '2025-04-15',
+        ]);
+        Transaction::factory()->mapped($head)->debit(2000)->create([
+            'company_id' => $company->id,
+            'date' => '2025-05-20',
+        ]);
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'bulk',
+                'replacement_head_id' => $replacement->id,
+            ])
+            ->assertSuccessful();
+
+        $aggregates = TransactionAggregate::where('account_head_id', $replacement->id)
+            ->pluck('total_debit', 'year_month');
+
+        expect(TransactionAggregate::where('account_head_id', $head->id)->exists())->toBeFalse()
+            ->and((float) $aggregates['2025-04'])->toBe(5000.0)
+            ->and((float) $aggregates['2025-05'])->toBe(2000.0);
+    });
+
+    it('reassigns head mapping rules when choosing bulk reassignment', function () {
+        $head = AccountHead::factory()->create();
+        $replacement = AccountHead::factory()->create();
+        $rule = HeadMapping::factory()->create([
+            'company_id' => tenant()->id,
+            'account_head_id' => $head->id,
+        ]);
+
+        livewire(ListAccountHeads::class)
+            ->callTableAction('delete', $head, data: [
+                'reassign_choice' => 'bulk',
+                'replacement_head_id' => $replacement->id,
+            ])
+            ->assertSuccessful();
+
+        expect($rule->refresh()->account_head_id)->toBe($replacement->id)
+            ->and(AccountHead::find($head->id))->toBeNull();
     });
 
     it('redirects to manual reassignment when choosing manual on edit page', function () {

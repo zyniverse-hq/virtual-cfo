@@ -46,11 +46,11 @@ class AccountHead extends Model
         return $this->transactions()->count() + $this->headMappings()->count();
     }
 
-    public function getDeletionErrorMessage(): string
+    /**
+     * Describe linked record counts as a human phrase, e.g. "1 transaction and 2 rules".
+     */
+    public static function describeLinkedRecords(int $transactionsCount, int $rulesCount): string
     {
-        $transactionsCount = $this->transactions()->count();
-        $rulesCount = $this->headMappings()->count();
-
         $parts = [];
         if ($transactionsCount > 0) {
             $parts[] = $transactionsCount === 1 ? '1 transaction' : "{$transactionsCount} transactions";
@@ -59,7 +59,15 @@ class AccountHead extends Model
             $parts[] = $rulesCount === 1 ? '1 rule' : "{$rulesCount} rules";
         }
 
-        $label = implode(' and ', $parts);
+        return implode(' and ', $parts);
+    }
+
+    public function getDeletionErrorMessage(): string
+    {
+        $transactionsCount = $this->transactions()->count();
+        $rulesCount = $this->headMappings()->count();
+
+        $label = self::describeLinkedRecords($transactionsCount, $rulesCount);
         $totalCount = $transactionsCount + $rulesCount;
         $verb = $totalCount === 1 ? 'is' : 'are';
         $pronoun = $totalCount === 1 ? 'it' : 'them';

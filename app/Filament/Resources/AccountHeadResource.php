@@ -8,6 +8,7 @@ use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\HeadMapping;
 use App\Models\Transaction;
+use App\Services\AggregateService;
 use App\Services\TallyImport\TallyMasterImportService;
 use BackedEnum;
 use Closure;
@@ -278,20 +279,10 @@ class AccountHeadResource extends Resource
 
                     Forms\Components\Radio::make('reassign_choice')
                         ->label('How would you like to handle them?')
-                        ->options(function (AccountHead $record) {
-                            $options = [
-                                'bulk' => 'Reassign all linked records to another Account Head',
-                            ];
-
-                            $hasTransactions = $record->transactions()->exists();
-                            $hasRules = $record->headMappings()->exists();
-
-                            if (! ($hasTransactions && $hasRules)) {
-                                $options['manual'] = 'Review and reassign them manually';
-                            }
-
-                            return $options;
-                        })
+                        ->options([
+                            'bulk' => 'Reassign all linked records to another Account Head',
+                            'manual' => 'Review and reassign them manually',
+                        ])
                         ->live()
                         ->required(),
 
@@ -356,10 +347,23 @@ class AccountHeadResource extends Resource
                             ]);
                         }
 
-                        foreach ($record->transactions()->get() as $t) {
-                            $t->update(['account_head_id' => $replacementId]);
-                        }
+                        // Collected before the update, while the rows still point at this head.
+                        $yearMonths = $record->transactions()
+                            ->distinct()
+                            ->selectRaw("TO_CHAR(date, 'YYYY-MM') AS year_month")
+                            ->pluck('year_month');
+
+                        // Mass updates bypass model events, so neither TransactionObserver nor any
+                        // HeadMapping observer runs. HeadMapping has none; transaction aggregates
+                        // are rebuilt explicitly below for each affected month, which also clears
+                        // the zero-count rows an incremental adjustment would leave behind.
+                        $record->transactions()->update(['account_head_id' => $replacementId]);
                         $record->headMappings()->update(['account_head_id' => $replacementId]);
+
+                        $aggregateService = app(AggregateService::class);
+                        foreach ($yearMonths as $yearMonth) {
+                            $aggregateService->rebuild((int) $record->company_id, (string) $yearMonth);
+                        }
                     }
 
                     $result = $action->process(static fn (AccountHead $record) => $force ? $record->forceDelete() : $record->delete());
@@ -405,32 +409,55 @@ class AccountHeadResource extends Resource
             ->groupBy('account_head_id')
             ->pluck('count', 'account_head_id');
 
+        $blocked = [];
+
         foreach ($records as $record) {
             /** @var AccountHead $record */
-            $tCount = $transactionCounts->get($record->id, 0);
-            $rCount = $ruleCounts->get($record->id, 0);
+            $tCount = (int) $transactionCounts->get($record->id, 0);
+            $rCount = (int) $ruleCounts->get($record->id, 0);
 
-            if ($tCount > 0 || $rCount > 0) {
-                $parts = [];
-                if ($tCount > 0) {
-                    $parts[] = $tCount === 1 ? '1 transaction' : "{$tCount} transactions";
-                }
-                if ($rCount > 0) {
-                    $parts[] = $rCount === 1 ? '1 rule' : "{$rCount} rules";
-                }
-                $label = implode(' and ', $parts);
-                $totalCount = $tCount + $rCount;
-                $verb = $totalCount === 1 ? 'is' : 'are';
-                $pronoun = $totalCount === 1 ? 'it' : 'them';
-
-                Notification::make()
-                    ->danger()
-                    ->title("Cannot bulk delete — '{$record->name}' because {$label} {$verb} mapped to it. Reassign {$pronoun} first.")
-                    ->send();
-
-                $action->cancel();
-                break;
+            if ($tCount + $rCount === 0) {
+                continue;
             }
+
+            $blocked[] = ['name' => $record->name, 'transactions' => $tCount, 'rules' => $rCount];
         }
+
+        if ($blocked === []) {
+            return;
+        }
+
+        Notification::make()
+            ->danger()
+            ->title(self::bulkDeletionErrorMessage($blocked))
+            ->send();
+
+        $action->cancel();
+    }
+
+    /**
+     * @param  non-empty-list<array{name: string, transactions: int, rules: int}>  $blocked
+     */
+    private static function bulkDeletionErrorMessage(array $blocked): string
+    {
+        if (count($blocked) === 1) {
+            $only = $blocked[0];
+            $label = AccountHead::describeLinkedRecords($only['transactions'], $only['rules']);
+            $totalCount = $only['transactions'] + $only['rules'];
+            $verb = $totalCount === 1 ? 'is' : 'are';
+            $pronoun = $totalCount === 1 ? 'it' : 'them';
+
+            return "Cannot bulk delete — '{$only['name']}' because {$label} {$verb} mapped to it. Reassign {$pronoun} first.";
+        }
+
+        $described = array_map(
+            fn (array $entry): string => "'{$entry['name']}' (".AccountHead::describeLinkedRecords($entry['transactions'], $entry['rules']).')',
+            $blocked,
+        );
+
+        $last = array_pop($described);
+        $list = implode(', ', $described)." and {$last}";
+
+        return "Cannot bulk delete — {$list} have mapped records. Reassign them first.";
     }
 }
