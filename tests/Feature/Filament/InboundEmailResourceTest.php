@@ -61,6 +61,20 @@ describe('InboundEmail Resource', function () {
             livewire(ListInboundEmails::class)
                 ->assertCanNotSeeTableRecords([$otherEmail]);
         });
+
+        it('renders the subject as the description in from_address column', function () {
+            asUser(role: UserRole::Admin);
+            $company = tenant();
+
+            $email = InboundEmail::factory()->create([
+                'company_id' => $company->id,
+                'from_address' => 'sender@example.com',
+                'subject' => 'Important Monthly Statement',
+            ]);
+
+            livewire(ListInboundEmails::class)
+                ->assertTableColumnHasDescription('from_address', 'Important Monthly Statement', $email);
+        });
     });
 
     describe('Filters', function () {

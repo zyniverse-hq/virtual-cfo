@@ -3,7 +3,6 @@
 use App\Enums\MappingType;
 use App\Enums\StatementType;
 use App\Exports\TransactionCsvExport;
-use App\Exports\TransactionDetailSheet;
 use App\Exports\TransactionExcelExport;
 use App\Exports\TransactionSummarySheet;
 use App\Models\AccountHead;
@@ -15,6 +14,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 describe('export base query filtering', function () {
     beforeEach(function () {
@@ -73,6 +76,18 @@ describe('export base query filtering', function () {
         $export = new TransactionCsvExport;
 
         expect($export->query()->count())->toBe(5);
+    });
+
+    it('excludes synthetic transactions from the export query even when mapped', function () {
+        $head = AccountHead::factory()->create();
+        $real = Transaction::factory()->mapped($head)->debit(1000)->create();
+        $synthetic = Transaction::factory()->mapped($head)->debit(5000)->create(['is_synthetic' => true]);
+
+        $export = new TransactionCsvExport;
+        $ids = $export->query()->pluck('id')->all();
+
+        expect($ids)->toContain($real->id)
+            ->and($ids)->not->toContain($synthetic->id);
     });
 });
 
@@ -143,7 +158,7 @@ describe('TransactionCsvExport', function () {
         expect($export->startCell())->toBe('A1');
     });
 
-    it('starts at A4 when importedFile is given', function () {
+    it('starts at A5 when importedFile is given', function () {
         $file = ImportedFile::factory()->create([
             'bank_name' => 'HDFC',
             'account_holder_name' => 'John Doe',
@@ -152,14 +167,15 @@ describe('TransactionCsvExport', function () {
 
         $export = new TransactionCsvExport(importedFile: $file);
 
-        expect($export->startCell())->toBe('A4');
+        expect($export->startCell())->toBe('A5');
     });
 
-    it('writes metadata header rows to sheet when importedFile is given', function () {
+    it('writes metadata header rows including opening balance when importedFile is given', function () {
         $file = ImportedFile::factory()->create([
             'bank_name' => 'HDFC Bank',
             'account_holder_name' => 'Zysk Technologies',
             'statement_period' => 'Apr 2025',
+            'opening_balance' => 10000.00,
         ]);
 
         $head = AccountHead::factory()->create();
@@ -182,7 +198,71 @@ describe('TransactionCsvExport', function () {
             ->and($sheet->getCell('B2')->getValue())->toBe('Zysk Technologies')
             ->and($sheet->getCell('A3')->getValue())->toBe('Statement Period:')
             ->and($sheet->getCell('B3')->getValue())->toBe('Apr 2025')
-            ->and($sheet->getCell('A4')->getValue())->toBe('Date'); // headings at row 4
+            ->and($sheet->getCell('A4')->getValue())->toBe('Opening Balance:')
+            ->and((float) $sheet->getCell('B4')->getValue())->toBe(10000.0)
+            ->and($sheet->getCell('A5')->getValue())->toBe('Date'); // headings at row 5
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes a bank closing balance row at the bottom of the csv export', function () {
+        $file = ImportedFile::factory()->create([
+            'bank_name' => 'HDFC Bank',
+            'statement_period' => 'Apr 2025',
+            'opening_balance' => 5000.00,
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create(['imported_file_id' => $file->id]);
+        Transaction::factory()->mapped($head)->credit(2000)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/csv-closing-bank.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $lastRow = $sheet->getHighestRow();
+
+        // Bank: opening + credit - debit = 5000 + 2000 - 1000 = 6000
+        expect($sheet->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance')
+            ->and((float) $sheet->getCell("B{$lastRow}")->getCalculatedValue())->toBe(6000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes a credit card closing balance row using the reversed formula in the csv export', function () {
+        $file = ImportedFile::factory()->creditCard()->create([
+            'bank_name' => 'HDFC Bank',
+            'statement_period' => 'Apr 2025',
+            'opening_balance' => 5000.00,
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create(['imported_file_id' => $file->id]);
+        Transaction::factory()->mapped($head)->credit(2000)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/csv-closing-cc.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $lastRow = $sheet->getHighestRow();
+
+        // Credit card: opening + debit - credit = 5000 + 1000 - 2000 = 4000
+        expect($sheet->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance')
+            ->and((float) $sheet->getCell("B{$lastRow}")->getCalculatedValue())->toBe(4000.0);
 
         Storage::disk('local')->delete($path);
     });
@@ -288,20 +368,16 @@ describe('TransactionDetailSheet', function () {
         asUser();
     });
 
-    it('writes metadata header block when importedFile is given', function () {
+    it('writes metadata header block including opening balance when importedFile is given', function () {
         $file = ImportedFile::factory()->create([
             'bank_name' => 'ICICI Bank',
             'account_holder_name' => 'Rahul Sharma',
             'statement_period' => 'Mar 2025',
+            'opening_balance' => 7500.00,
         ]);
 
         $head = AccountHead::factory()->create();
         Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
-
-        $sheet = new TransactionDetailSheet(
-            baseQuery: Transaction::where('imported_file_id', $file->id),
-            importedFile: $file,
-        );
 
         $path = 'test-exports/detail-sheet-meta.xlsx';
         Excel::store(new TransactionExcelExport(
@@ -318,7 +394,67 @@ describe('TransactionDetailSheet', function () {
             ->and($ws->getCell('B2')->getValue())->toBe('Rahul Sharma')
             ->and($ws->getCell('A3')->getValue())->toBe('Statement Period:')
             ->and($ws->getCell('B3')->getValue())->toBe('Mar 2025')
-            ->and($ws->getCell('A4')->getValue())->toBe('Date');
+            ->and($ws->getCell('A4')->getValue())->toBe('Opening Balance:')
+            ->and((float) $ws->getCell('B4')->getValue())->toBe(7500.0)
+            ->and($ws->getCell('A5')->getValue())->toBe('Date');
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes a bank closing balance row below the totals row on the transactions sheet', function () {
+        $file = ImportedFile::factory()->create([
+            'bank_name' => 'ICICI Bank',
+            'statement_period' => 'Mar 2025',
+            'opening_balance' => 5000.00,
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create(['imported_file_id' => $file->id]);
+        Transaction::factory()->mapped($head)->credit(2000)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/detail-closing-bank.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        $lastRow = $ws->getHighestRow();
+
+        // Bank: opening + credit - debit = 5000 + 2000 - 1000 = 6000
+        expect($ws->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance')
+            ->and((float) $ws->getCell("B{$lastRow}")->getCalculatedValue())->toBe(6000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes a credit card closing balance row using the reversed formula on the transactions sheet', function () {
+        $file = ImportedFile::factory()->creditCard()->create([
+            'bank_name' => 'ICICI Bank',
+            'statement_period' => 'Mar 2025',
+            'opening_balance' => 5000.00,
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create(['imported_file_id' => $file->id]);
+        Transaction::factory()->mapped($head)->credit(2000)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/detail-closing-cc.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        $lastRow = $ws->getHighestRow();
+
+        // Credit card: opening + debit - credit = 5000 + 1000 - 2000 = 4000
+        expect($ws->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance')
+            ->and((float) $ws->getCell("B{$lastRow}")->getCalculatedValue())->toBe(4000.0);
 
         Storage::disk('local')->delete($path);
     });
@@ -335,6 +471,121 @@ describe('TransactionDetailSheet', function () {
 
         // Without metadata, headings are at row 1
         expect($ws->getCell('A1')->getValue())->toBe('Date');
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('wraps long descriptions and calculates dynamic row heights', function () {
+        $head = AccountHead::factory()->create();
+
+        // 1. Long description (length > 40)
+        $longDesc = 'UPI/DR/614692092739/AMIR ALI/YESB/q591542273/Paid-Long';
+        Transaction::factory()->mapped($head)->create([
+            'description' => $longDesc,
+            'date' => '2025-03-01',
+        ]);
+
+        // 2. Short description (length <= 40)
+        $shortDesc = 'Short description';
+        Transaction::factory()->mapped($head)->create([
+            'description' => $shortDesc,
+            'date' => '2025-03-02',
+        ]);
+
+        $path = 'test-exports/detail-sheet-wrapping.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        expect($ws->getPrintGridlines())->toBeTrue();
+
+        $pageSetup = $ws->getPageSetup();
+        expect($pageSetup->getOrientation())->toBe(PageSetup::ORIENTATION_LANDSCAPE)
+            ->and($pageSetup->getFitToPage())->toBeTrue()
+            ->and($pageSetup->getFitToWidth())->toBe(1)
+            ->and($pageSetup->getFitToHeight())->toBe(0);
+
+        // Verify row 2 (long description)
+        $desc2 = $ws->getCell('I2')->getValue();
+        $expectedWrapped = "UPI/DR/614692092739/AMIR ALI/\nYESB/q591542273/Paid-Long";
+        expect($desc2)->toBe($expectedWrapped);
+
+        $alignment2 = $ws->getStyle('I2')->getAlignment();
+        expect($alignment2->getWrapText())->toBeTrue()
+            ->and($alignment2->getVertical())->toBe(Alignment::VERTICAL_TOP);
+
+        // Row height for Row 2 should be dynamic (30.0 for 2 lines)
+        expect($ws->getRowDimension(2)->getRowHeight())->toBe(30.0);
+
+        // Verify row 3 (short description)
+        $desc3 = $ws->getCell('I3')->getValue();
+        expect($desc3)->toBe($shortDesc);
+
+        // Column wrapping should be enabled
+        $alignment3 = $ws->getStyle('I3')->getAlignment();
+        expect($alignment3->getWrapText())->toBeTrue()
+            ->and($alignment3->getVertical())->toBe(Alignment::VERTICAL_TOP);
+
+        // Row height for Row 3 should be default (20.0)
+        expect($ws->getRowDimension(3)->getRowHeight())->toBe(20.0);
+
+        // Verify Totals Row (Row 4) has height 20.0
+        expect($ws->getRowDimension(4)->getRowHeight())->toBe(20.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('totals row balance cell shows total debit minus total credit', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(3000)->create();
+        Transaction::factory()->mapped($head)->credit(1500)->create();
+
+        $path = 'test-exports/detail-totals-balance.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        $totalsRow = $ws->getHighestRow();
+
+        // Columns (all selected, no metadata): debit=D, credit=E, balance=F.
+        // Balance total = total debit - total credit = 3000 - 1500 = 1500.
+        expect((float) $ws->getCell("F{$totalsRow}")->getCalculatedValue())->toBe(1500.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('applies a fill background to the header row', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create();
+
+        $path = 'test-exports/detail-header-fill.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        // No metadata: header is row 1.
+        $headerFill = $ws->getCell('A1')->getStyle()->getFill()->getFillType();
+        expect($headerFill)->toBe(Fill::FILL_SOLID);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('applies borders to the data range', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create();
+
+        $path = 'test-exports/detail-borders.xlsx';
+        Excel::store(new TransactionExcelExport, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Transactions');
+
+        // No metadata: first data row is row 2.
+        $borderStyle = $ws->getCell('A2')->getStyle()->getBorders()->getBottom()->getBorderStyle();
+        expect($borderStyle)->not->toBe(Border::BORDER_NONE);
 
         Storage::disk('local')->delete($path);
     });
@@ -426,6 +677,18 @@ describe('TransactionSummarySheet', function () {
             ->and((float) $salesRow['total_credit'])->toBe(5000.0);
     });
 
+    it('excludes synthetic transactions from summary totals', function () {
+        $head = AccountHead::factory()->create(['name' => 'Purchases']);
+        Transaction::factory()->mapped($head)->debit(1000)->create();
+        Transaction::factory()->mapped($head)->debit(5000)->create(['is_synthetic' => true]);
+
+        $sheet = new TransactionSummarySheet;
+        $row = $sheet->collection()->firstWhere('account_head', 'Purchases');
+
+        expect($row)->not->toBeNull()
+            ->and((float) $row['total_debit'])->toBe(1000.0);
+    });
+
     it('writes opening balance row to summary sheet', function () {
         $file = ImportedFile::factory()->create([
             'bank_name' => 'SBI',
@@ -445,6 +708,8 @@ describe('TransactionSummarySheet', function () {
 
         $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
         $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getPrintGridlines())->toBeTrue();
 
         expect($ws->getCell('A3')->getValue())->toBe('Opening Balance:')
             ->and((float) $ws->getCell('B3')->getValue())->toBe(10000.0);
@@ -480,6 +745,37 @@ describe('TransactionSummarySheet', function () {
         // The value should equal 5000 + 2000 - 1000 = 6000
         $closingValue = $ws->getCell("B{$lastRow}")->getCalculatedValue();
         expect((float) $closingValue)->toBe(6000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('writes a reversed closing balance formula for credit card summary sheets', function () {
+        $file = ImportedFile::factory()->creditCard()->create([
+            'bank_name' => 'HDFC',
+            'account_holder_name' => null,
+            'statement_period' => 'Apr 2025',
+            'opening_balance' => 5000.00,
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create(['imported_file_id' => $file->id]);
+        Transaction::factory()->mapped($head)->credit(2000)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/summary-closing-cc.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Summary');
+
+        $lastRow = $ws->getHighestRow();
+        expect($ws->getCell("A{$lastRow}")->getValue())->toBe('Closing Balance');
+
+        // Credit card: opening + debit - credit = 5000 + 1000 - 2000 = 4000
+        $closingValue = $ws->getCell("B{$lastRow}")->getCalculatedValue();
+        expect((float) $closingValue)->toBe(4000.0);
 
         Storage::disk('local')->delete($path);
     });
@@ -521,6 +817,96 @@ describe('TransactionExcelExport', function () {
         Excel::download($export, 'transactions.xlsx');
 
         Excel::assertDownloaded('transactions.xlsx');
+    });
+});
+
+describe('dynamic column selection', function () {
+    beforeEach(function () {
+        asUser();
+    });
+
+    it('exports only selected columns subset in headings and map', function () {
+        $head = AccountHead::factory()->create([
+            'name' => 'Office Rent',
+            'group_name' => 'Indirect Expenses',
+        ]);
+        $transaction = Transaction::factory()->mapped($head)->debit(5000.50)->create([
+            'date' => '2025-03-15',
+            'description' => 'NEFT-RENT-PAYMENT',
+            'reference_number' => 'REF123',
+            'balance' => 45000.00,
+            'currency' => 'USD',
+        ]);
+        $transaction->load(['accountHead', 'importedFile']);
+
+        $selectedColumns = ['date', 'description', 'debit'];
+        $export = new TransactionCsvExport(selectedColumns: $selectedColumns);
+
+        expect($export->headings())->toBe([
+            'Date',
+            'Debit',
+            'Description',
+        ]);
+
+        $row = $export->map($transaction);
+
+        expect($row)->toBe([
+            '15 Mar 2025',
+            5000.50,
+            'NEFT-RENT-PAYMENT',
+        ]);
+    });
+
+    it('falls back to all columns when empty selection or null is provided', function () {
+        $head = AccountHead::factory()->create();
+        $transaction = Transaction::factory()->mapped($head)->create();
+        $transaction->load(['accountHead', 'importedFile']);
+
+        $allHeadings = [
+            'Date',
+            'Reference',
+            'Account Head',
+            'Debit',
+            'Credit',
+            'Balance',
+            'Currency',
+            'Account Head Group',
+            'Description',
+        ];
+
+        $exportEmpty = new TransactionCsvExport(selectedColumns: []);
+        expect($exportEmpty->headings())->toBe($allHeadings)
+            ->and(count($exportEmpty->map($transaction)))->toBe(9);
+
+        $exportNull = new TransactionCsvExport(selectedColumns: null);
+        expect($exportNull->headings())->toBe($allHeadings)
+            ->and(count($exportNull->map($transaction)))->toBe(9);
+    });
+
+    it('sets column widths and headings reflecting selectedColumns subset in Excel detail sheet', function () {
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->debit(1000)->create([
+            'date' => '2025-03-15',
+            'description' => 'Office Rent Payment',
+        ]);
+
+        $selectedColumns = ['date', 'description', 'debit'];
+        $path = 'test-exports/transactions-selected-columns.xlsx';
+        Excel::store(new TransactionExcelExport(selectedColumns: $selectedColumns), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getSheetByName('Transactions');
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Date')
+            ->and($sheet->getCell('B1')->getValue())->toBe('Debit')
+            ->and($sheet->getCell('C1')->getValue())->toBe('Description')
+            ->and($sheet->getCell('D1')->getValue())->toBeNull();
+
+        expect((int) $sheet->getColumnDimension('A')->getWidth())->toBe(14)
+            ->and((int) $sheet->getColumnDimension('B')->getWidth())->toBe(15)
+            ->and((int) $sheet->getColumnDimension('C')->getWidth())->toBe(45);
+
+        Storage::disk('local')->delete($path);
     });
 });
 

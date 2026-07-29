@@ -148,7 +148,8 @@ class AccountHeadResource extends Resource
             ])
             ->headerActions([
                 self::makeTallyImportAction('import_tally')
-                    ->color('info'),
+                    ->color('info')
+                    ->extraAttributes(['class' => 'tour-import-tally']),
             ])
             ->emptyStateHeading('No account heads yet')
             ->emptyStateDescription('Import your chart of accounts from Tally to get started. This enables automatic transaction matching.')

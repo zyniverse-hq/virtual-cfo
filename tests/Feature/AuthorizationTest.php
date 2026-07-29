@@ -38,6 +38,15 @@ describe('Authorization Policies', function () {
 
             expect($policy->delete($admin, $head))->toBeTrue();
         });
+
+        it('can bulk delete resources', function () {
+            $admin = auth()->user();
+
+            expect((new AccountHeadPolicy)->deleteAny($admin))->toBeTrue()
+                ->and((new ImportedFilePolicy)->deleteAny($admin))->toBeTrue()
+                ->and((new TransactionPolicy)->deleteAny($admin))->toBeTrue()
+                ->and((new HeadMappingPolicy)->deleteAny($admin))->toBeTrue();
+        });
     });
 
     describe('Accountant role', function () {
@@ -75,6 +84,15 @@ describe('Authorization Policies', function () {
 
             expect((new AccountHeadPolicy)->delete($accountant, $head))->toBeTrue();
         });
+
+        it('can bulk delete resources', function () {
+            $accountant = auth()->user();
+
+            expect((new AccountHeadPolicy)->deleteAny($accountant))->toBeTrue()
+                ->and((new ImportedFilePolicy)->deleteAny($accountant))->toBeTrue()
+                ->and((new TransactionPolicy)->deleteAny($accountant))->toBeTrue()
+                ->and((new HeadMappingPolicy)->deleteAny($accountant))->toBeTrue();
+        });
     });
 
     describe('Viewer role', function () {
@@ -111,6 +129,15 @@ describe('Authorization Policies', function () {
             $head = AccountHead::factory()->create();
 
             expect((new AccountHeadPolicy)->delete($viewer, $head))->toBeFalse();
+        });
+
+        it('cannot bulk delete resources', function () {
+            $viewer = auth()->user();
+
+            expect((new AccountHeadPolicy)->deleteAny($viewer))->toBeFalse()
+                ->and((new ImportedFilePolicy)->deleteAny($viewer))->toBeFalse()
+                ->and((new TransactionPolicy)->deleteAny($viewer))->toBeFalse()
+                ->and((new HeadMappingPolicy)->deleteAny($viewer))->toBeFalse();
         });
     });
 
