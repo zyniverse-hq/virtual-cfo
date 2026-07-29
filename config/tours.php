@@ -163,4 +163,45 @@ return [
             'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
         ],
     ],
+
+    'review-queue' => [
+        [
+            'title' => 'Review Queue',
+            'description' => 'Welcome to the Review Queue! Here you can quickly review and verify AI-suggested mappings before they are finalized.',
+            'element' => null,
+        ],
+        [
+            'title' => 'AI Confidence',
+            'description' => 'Each suggestion carries an AI confidence score. Higher scores are safer to approve, while lower scores deserve a closer look before you accept them.',
+            'element' => '.fi-ta-header-cell-ai-confidence',
+        ],
+        [
+            'title' => 'Approve, Reject or Reassign',
+            'description' => 'Use Approve to accept an AI suggestion, Reject if it is incorrect, or Reassign to pick a different account head. Bulk actions let you handle several rows at once.',
+            'element' => '.fi-ta-table tbody tr:first-child .fi-ta-actions',
+        ],
+    ],
+
+    'inbound-emails' => [
+        [
+            'title' => 'Mailing System',
+            'description' => 'This is your Inbound Email hub. Any statement sent directly to your company\'s dedicated inbox will automatically be parsed and imported.',
+            'element' => null,
+        ],
+        [
+            'title' => 'Inbox Address & Stats',
+            'description' => 'These widgets display your recent email volume and highlight any emails that were rejected or arrived with no attachments.',
+            'element' => '.fi-wi-stats-overview',
+        ],
+        [
+            'title' => 'Attachment Indicators',
+            'description' => 'This column instantly shows you how many attachments were detected in the email, letting you know if a statement was successfully attached.',
+            'element' => '.fi-ta-header-cell-attachment-count',
+        ],
+        [
+            'title' => 'Status Badges',
+            'description' => 'Emails will be marked as Processed, Rejected, Duplicate, or No Attachments. Click any row to view the email details and rejection reasons.',
+            'element' => '.fi-ta-header-cell-status',
+        ],
+    ],
 ];

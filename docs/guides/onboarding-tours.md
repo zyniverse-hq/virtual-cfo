@@ -42,29 +42,28 @@ Add an entry to `config/tours.php`:
 In the page's List class (e.g., `ListYourResources.php`):
 
 ```php
-use App\Livewire\OnboardingTour;
+use App\Filament\Concerns\HasPageTour;
 
-protected function getHeaderActions(): array
+class ListYourResources extends ListRecords
 {
-    return [
-        // ... existing actions
-        \Filament\Actions\Action::make('page_tour')
-            ->label('Page Tour')
-            ->icon('heroicon-o-academic-cap')
-            ->color('gray')
-            ->extraAttributes([
-                'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-            ]),
-    ];
-}
+    use HasPageTour;
 
-public function getFooter(): ?\Illuminate\Contracts\View\View
-{
-    return view('livewire.page-tour-embed', ['pageId' => 'your-page']);
+    protected function getHeaderActions(): array
+    {
+        return [
+            // ... existing actions
+            $this->getPageTourAction(),
+        ];
+    }
+
+    public function getFooter(): ?\Illuminate\Contracts\View\View
+    {
+        return $this->getPageTourFooter('your-page');
+    }
 }
 ```
 
-The `page-tour-embed` view renders the `OnboardingTour` Livewire component with the page ID. The `$dispatch('start-page-tour')` uses Alpine's DOM event system to communicate with the component's `@start-page-tour.window` listener.
+The `HasPageTour` trait provides the standardized `getPageTourAction()` for the header and `getPageTourFooter($pageId)` which renders the `OnboardingTour` Livewire component.
 
 ### Step 3: Test
 
@@ -104,7 +103,7 @@ Prefer stable selectors in this order:
 
 ## Extending Phase 1
 
-Phase 1 covers 6 core workflow pages. To complete coverage, add tours for:
+Phase 1 covers 8 core workflow pages. To complete coverage, add tours for:
 
 - Bank Accounts — account management, PDF password setup
 - Credit Cards — card management, statement upload

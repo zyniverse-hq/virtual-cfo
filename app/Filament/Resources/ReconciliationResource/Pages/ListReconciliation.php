@@ -2,14 +2,16 @@
 
 namespace App\Filament\Resources\ReconciliationResource\Pages;
 
+use App\Filament\Concerns\HasPageTour;
 use App\Filament\Resources\ReconciliationResource;
 use App\Filament\Widgets\ReconciliationStatsOverview;
-use Filament\Actions\Action;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
 
 class ListReconciliation extends ListRecords
 {
+    use HasPageTour;
+
     protected static string $resource = ReconciliationResource::class;
 
     public function getSubheading(): ?string
@@ -20,13 +22,7 @@ class ListReconciliation extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
@@ -39,6 +35,6 @@ class ListReconciliation extends ListRecords
 
     public function getFooter(): ?View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'reconciliation']);
+        return $this->getPageTourFooter('reconciliation');
     }
 }
