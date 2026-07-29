@@ -12,6 +12,7 @@ use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\DocumentProcessor\DocumentProcessor;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -1388,6 +1389,43 @@ describe('DocumentProcessor', function () {
 
             expect($previousBalanceTx)->not->toBeNull()
                 ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-05');
+        });
+    });
+
+    describe('amount-less transaction rows', function () {
+        it('keeps a row with no debit or credit but logs a warning', function () {
+            Storage::put('statements/cc_no_amount.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI Bank',
+                    'statement_period' => 'May 2026',
+                    'transactions' => [
+                        ['date' => '10 May 2026', 'description' => 'AMAZON', 'debit' => 2000, 'balance' => 2000],
+                        ['date' => '11 May 2026', 'description' => 'transaction cashback', 'reference' => '13388720049'],
+                    ],
+                ],
+            ]);
+
+            Log::shouldReceive('warning')
+                ->once()
+                ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'no debit or credit')
+                    && $context['description'] === 'transaction cashback');
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_no_amount.pdf',
+                'original_filename' => 'icici_cc_no_amount.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $cashback = Transaction::where('imported_file_id', $file->id)->get()
+                ->firstWhere('description', 'transaction cashback');
+
+            expect($cashback)->not->toBeNull()
+                ->and($cashback->debit)->toBeNull()
+                ->and($cashback->credit)->toBeNull();
         });
     });
 });

@@ -503,14 +503,25 @@ class DocumentProcessor
             }
 
             foreach ($transactions as $row) {
+                $debit = isset($row['debit']) && (float) $row['debit'] > 0 ? (string) $row['debit'] : null;
+                $credit = isset($row['credit']) && (float) $row['credit'] > 0 ? (string) $row['credit'] : null;
+
+                if ($debit === null && $credit === null) {
+                    Log::warning('Statement transaction row has no debit or credit amount', [
+                        'imported_file_id' => $file->id,
+                        'description' => $row['description'] ?? '',
+                        'raw_data' => $row,
+                    ]);
+                }
+
                 Transaction::create([
                     'company_id' => $file->company_id,
                     'imported_file_id' => $file->id,
                     'date' => $this->parseTransactionDate($row['date']),
                     'description' => $row['description'] ?? '',
                     'reference_number' => $row['reference'] ?? null,
-                    'debit' => isset($row['debit']) && (float) $row['debit'] > 0 ? (string) $row['debit'] : null,
-                    'credit' => isset($row['credit']) && (float) $row['credit'] > 0 ? (string) $row['credit'] : null,
+                    'debit' => $debit,
+                    'credit' => $credit,
                     'balance' => isset($row['balance']) ? (string) $row['balance'] : null,
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,

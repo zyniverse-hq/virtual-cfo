@@ -141,7 +141,7 @@ jobs:
           coverage: none
 
       - name: Check for vulnerabilities
-        run: composer audit
+        run: composer audit --locked
 
   # Job 5: Unit & Architecture tests (no database required)
   tests-unit:
