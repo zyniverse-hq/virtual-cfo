@@ -605,7 +605,7 @@ class ReconciliationService
     /**
      * Reject all pending suggestions and confirmed matches for a bank transaction.
      */
-    public function rejectAllSuggestions(Transaction $bankTxn): int
+    public function rejectAllMatches(Transaction $bankTxn): int
     {
         return DB::transaction(function () use ($bankTxn) {
             $suggestedUpdated = $bankTxn->reconciliationMatchesAsBank()
