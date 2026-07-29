@@ -139,6 +139,23 @@ class Transaction extends Model
     }
 
     /**
+     * Transactions eligible for automated matching.
+     *
+     * Flagged is included because it is only ever set by the reconciliation
+     * engine to mean "tried and failed", never by a user decision — so those
+     * rows must be re-examined when new counterparties arrive.
+     *
+     * @param  Builder<Transaction>  $query
+     */
+    public function scopeMatchable(Builder $query): void
+    {
+        $query->whereIn('reconciliation_status', [
+            ReconciliationStatus::Unreconciled,
+            ReconciliationStatus::Flagged,
+        ]);
+    }
+
+    /**
      * @param  Builder<Transaction>  $query
      * @return Builder<Transaction>
      */

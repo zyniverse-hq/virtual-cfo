@@ -188,12 +188,6 @@ parameters:
 			path: app/Models/ImportedFile.php
 
 		-
-			message: '#^Method App\\Models\\ImportedFile\:\:transactions\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
-			identifier: missingType.generics
-			count: 1
-			path: app/Models/ImportedFile.php
-
-		-
 			message: '#^Class App\\Models\\ReconciliationMatch uses generic trait Illuminate\\Database\\Eloquent\\Factories\\HasFactory but does not specify its types\: TFactory$#'
 			identifier: missingType.generics
 			count: 1
@@ -303,12 +297,6 @@ parameters:
 
 		-
 			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<\(int\|string\),Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\|string\)\: array\{id\: int, description\: string, debit\: string\|null, credit\: string\|null\}, Closure\(App\\Models\\Transaction\)\: array\{id\: int, description\: string, debit\: string\|null, credit\: string\|null\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Services/HeadMatcher/HeadMatcherService.php
-
-		-
-			message: '#^Parameter \#1 \$transactions of method App\\Services\\HeadMatcher\\RuleBasedMatcher\:\:match\(\) expects Illuminate\\Support\\Collection\<int, App\\Models\\Transaction\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
 			identifier: argument.type
 			count: 1
 			path: app/Services/HeadMatcher/HeadMatcherService.php

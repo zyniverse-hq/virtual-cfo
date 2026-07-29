@@ -56,9 +56,7 @@ class ReconciliationService
     ): ReconciliationResult {
         $result = new ReconciliationResult;
 
-        $bankTransactions = $bankFile->transactions()
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
-            ->get();
+        $bankTransactions = $bankFile->transactions()->matchable()->get();
 
         $invoiceFilesCollection = $invoiceFiles instanceof ImportedFile
             ? collect([$invoiceFiles])
@@ -66,9 +64,7 @@ class ReconciliationService
 
         $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
 
-        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
-            ->get();
+        $invoiceTransactions = $this->matchableInvoicesFrom($invoiceFileIds);
 
         if ($bankTransactions->isEmpty() || $invoiceTransactions->isEmpty()) {
             $this->flagUnmatched($bankFile, $invoiceFilesCollection);
@@ -449,6 +445,16 @@ class ReconciliationService
      * Scan for invoice match candidates and create suggested matches.
      * Returns the number of suggestions created.
      *
+     * Cost characteristic: the bank side is scoped by company, not by file, and
+     * flagUnmatched() never moves a row out of Flagged. So the candidate pool
+     * grows monotonically and every run re-scans the full history of bank rows
+     * that have never produced a pending suggestion. This is deliberate — an
+     * invoice can legitimately arrive months after the payment cleared, and a
+     * date window would silently stop reconciling those. At this scale (one
+     * small accounts team) the re-scan is cheap; if it stops being cheap, bound
+     * it with a lookback window on Transaction::date rather than by narrowing
+     * the status filter, since the statuses are what make the pass correct.
+     *
      * @param  ImportedFile|Collection<int, ImportedFile>|array<int, ImportedFile>  $invoiceFiles
      */
     public function suggestMatches(ImportedFile|Collection|array $invoiceFiles): int
@@ -462,22 +468,16 @@ class ReconciliationService
         }
 
         $companyId = $invoiceFilesCollection->first()->company_id;
-        $invoiceFileIds = $invoiceFilesCollection->pluck('id')->all();
 
-        // Get all unreconciled invoice transactions from these files
-        /** @var Collection<int, Transaction> $invoiceTransactions */
-        $invoiceTransactions = Transaction::whereIn('imported_file_id', $invoiceFileIds)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
-            ->get();
+        $invoiceTransactions = $this->matchableInvoicesFrom($invoiceFilesCollection->pluck('id')->all());
 
         if ($invoiceTransactions->isEmpty()) {
             return 0;
         }
 
-        // Get all unreconciled bank/CC transactions for this company
         $bankTransactions = Transaction::query()
             ->where('company_id', $companyId)
-            ->where('reconciliation_status', ReconciliationStatus::Unreconciled)
+            ->matchable()
             ->whereHas('importedFile', fn ($q) => $q->whereIn('statement_type', [
                 StatementType::Bank,
                 StatementType::CreditCard,
@@ -670,6 +670,19 @@ class ReconciliationService
 
             return $match;
         });
+    }
+
+    /**
+     * Invoice transactions from the given imported files that are still eligible for matching.
+     *
+     * @param  array<int, mixed>  $invoiceFileIds
+     * @return Collection<int, Transaction>
+     */
+    private function matchableInvoicesFrom(array $invoiceFileIds): Collection
+    {
+        return Transaction::whereIn('imported_file_id', $invoiceFileIds)
+            ->matchable()
+            ->get();
     }
 
     /**
