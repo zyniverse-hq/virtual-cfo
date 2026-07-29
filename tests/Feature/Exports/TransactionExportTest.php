@@ -300,6 +300,37 @@ describe('TransactionCsvExport', function () {
         Storage::disk('local')->delete($path);
     });
 
+    it('falls back to the credit card name when card_variant is null', function () {
+        $card = CreditCard::factory()->create(['name' => 'Rubyx']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => null,
+            'account_holder_name' => 'John Doe',
+            'statement_period' => 'May 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $export = new TransactionCsvExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        );
+
+        $path = 'test-exports/transactions-meta-cc-fallback.xlsx';
+        Excel::store($export, $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getCell('A1')->getValue())->toBe('Card:')
+            ->and($sheet->getCell('B1')->getValue())->toBe('ICICI Bank Rubyx');
+
+        Storage::disk('local')->delete($path);
+    });
+
     it('respects date range filter', function () {
         $head = AccountHead::factory()->create();
         $inRange = Transaction::factory()->mapped($head)->create(['date' => '2025-03-15']);
@@ -713,6 +744,61 @@ describe('TransactionSummarySheet', function () {
 
         expect($ws->getCell('A3')->getValue())->toBe('Opening Balance:')
             ->and((float) $ws->getCell('B3')->getValue())->toBe(10000.0);
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('labels summary sheet A1 as Account and shows the bank name for bank statements', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_name' => 'HDFC Bank',
+            'account_holder_name' => null,
+            'statement_period' => 'Apr 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/summary-label-bank.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getCell('A1')->getValue())->toBe('Account:')
+            ->and($ws->getCell('B1')->getValue())->toBe('HDFC Bank');
+
+        Storage::disk('local')->delete($path);
+    });
+
+    it('labels summary sheet A1 as Card and shows the card product name for credit card statements', function () {
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'Platinum',
+            'account_holder_name' => 'MR VARUN CHANDER',
+            'statement_period' => 'Apr 2025',
+        ]);
+
+        $head = AccountHead::factory()->create();
+        Transaction::factory()->mapped($head)->create(['imported_file_id' => $file->id]);
+
+        $path = 'test-exports/summary-label-card.xlsx';
+        Excel::store(new TransactionExcelExport(
+            baseQuery: Transaction::where('imported_file_id', $file->id),
+            importedFile: $file,
+        ), $path, 'local');
+
+        $spreadsheet = IOFactory::load(storage_path("app/private/{$path}"));
+        $ws = $spreadsheet->getSheetByName('Summary');
+
+        expect($ws->getCell('A1')->getValue())->toBe('Card:')
+            ->and($ws->getCell('B1')->getValue())->toBe('ICICI Bank Platinum — MR VARUN CHANDER');
 
         Storage::disk('local')->delete($path);
     });

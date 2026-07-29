@@ -257,9 +257,8 @@ class ViewImportedFile extends ViewRecord
                         Infolists\Components\TextEntry::make('bankAccount.name')
                             ->label('Bank Account')
                             ->visible(fn (ImportedFile $record): bool => $record->bank_account_id !== null),
-                        Infolists\Components\TextEntry::make('credit_card_display')
+                        Infolists\Components\TextEntry::make('creditCard.name')
                             ->label('Credit Card')
-                            ->getStateUsing(fn (ImportedFile $record): string => $record->getFullBankOrCardName())
                             ->visible(fn (ImportedFile $record): bool => $record->credit_card_id !== null),
                         Infolists\Components\TextEntry::make('statement_type')
                             ->label('Type')

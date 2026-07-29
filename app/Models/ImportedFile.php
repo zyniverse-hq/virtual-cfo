@@ -199,35 +199,42 @@ class ImportedFile extends Model
         return $this->statement_type === StatementType::CreditCard ? 'Card:' : 'Account:';
     }
 
+    /**
+     * Build the display name of the account or card this file belongs to, combining the
+     * detected bank name, the linked card record, and the parsed card variant without
+     * repeating any part. The variant is preferred over the card record name.
+     */
     public function getFullBankOrCardName(): string
     {
-        $bankName = trim((string) ($this->bank_name ?? ''));
+        $bankName = trim((string) $this->bank_name);
+        $variant = trim((string) $this->card_variant);
+        $cardName = '';
 
-        if ($this->statement_type === StatementType::CreditCard) {
+        if ($this->credit_card_id !== null) {
             $this->loadMissing('creditCard');
-
-            $cardName = trim((string) ($this->creditCard?->name ?? ''));
-            $variant = trim((string) $this->card_variant);
-
-            $identity = match (true) {
-                $variant === '' => $cardName,
-                $cardName === '' || stripos($variant, $cardName) !== false => $variant,
-                default => $cardName.' '.$variant,
-            };
-
-            if ($identity === '') {
-                return $bankName;
-            }
-
-            if ($bankName !== '' && stripos($identity, $bankName) === false) {
-                return $bankName.' '.$identity;
-            }
-
-            return $identity;
+            $cardName = trim((string) $this->creditCard?->name);
         }
 
-        $this->loadMissing('bankAccount');
+        return $this->mergeNameParts($bankName ?: $cardName, $variant ?: $cardName);
+    }
 
-        return trim((string) ($this->bankAccount?->name ?? $bankName));
+    /**
+     * Join two name fragments, collapsing to the longer one when either contains the other.
+     */
+    private function mergeNameParts(string $prefix, string $suffix): string
+    {
+        if ($prefix === '' || $suffix === '') {
+            return $prefix.$suffix;
+        }
+
+        if (stripos($suffix, $prefix) !== false) {
+            return $suffix;
+        }
+
+        if (stripos($prefix, $suffix) !== false) {
+            return $prefix;
+        }
+
+        return "{$prefix} {$suffix}";
     }
 }
