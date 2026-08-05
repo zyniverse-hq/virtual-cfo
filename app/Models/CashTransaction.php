@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use Database\Factories\CashTransactionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CashTransaction extends Model
 {
-    /** @use HasFactory<\Database\Factories\CashTransactionFactory> */
+    /** @use HasFactory<CashTransactionFactory> */
     use HasFactory;
 
     protected $fillable = [

@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Models\CashTransaction;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -18,7 +19,7 @@ class CashTransactionExcelExport implements FromCollection, ShouldAutoSize, With
     protected Collection $records;
 
     /**
-     * @param Collection<int, CashTransaction> $records
+     * @param  Collection<int, CashTransaction>  $records
      */
     public function __construct(Collection $records)
     {
