@@ -22,6 +22,7 @@ use Illuminate\Support\Collection;
 
 /**
  * @property UserRole|null $role
+ * @property string|null $quick_notes
  */
 class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery, HasDefaultTenant, HasTenants
 {
@@ -35,6 +36,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         'toured_pages',
         'dismissed_suggestions',
         'last_used_company_id',
+        'quick_notes',
     ];
 
     protected $hidden = [
@@ -61,7 +63,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     /** @return BelongsToMany<Company, $this> */
     public function companies(): BelongsToMany
     {
-        return $this->belongsToMany(Company::class)->withPivot('role')->withTimestamps();
+        return $this->belongsToMany(Company::class)->withPivot('role', 'quick_notes')->withTimestamps();
     }
 
     /** @return Collection<int, Company> */
