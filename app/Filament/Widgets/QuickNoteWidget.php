@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Company;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -28,10 +29,10 @@ class QuickNoteWidget extends Widget implements HasForms
 
     public function mount(): void
     {
-        $tenant = \Filament\Facades\Filament::getTenant();
+        $tenant = Filament::getTenant();
         $quickNotes = null;
-        
-        if ($tenant instanceof \App\Models\Company) {
+
+        if ($tenant instanceof Company) {
             $company = auth()->user()?->companies()->where('company_id', $tenant->id)->first();
             // @phpstan-ignore property.notFound
             $quickNotes = $company?->pivot?->quick_notes;
@@ -61,9 +62,9 @@ class QuickNoteWidget extends Widget implements HasForms
         $data = $this->form->getState();
 
         $user = auth()->user();
-        $tenant = \Filament\Facades\Filament::getTenant();
+        $tenant = Filament::getTenant();
 
-        if ($user && $tenant instanceof \App\Models\Company) {
+        if ($user && $tenant instanceof Company) {
             $user->companies()->updateExistingPivot($tenant->id, [
                 'quick_notes' => $data['notes'] ?? null,
             ]);

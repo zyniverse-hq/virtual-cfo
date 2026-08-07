@@ -40,7 +40,7 @@ it('can save quick notes for the authenticated user and tenant', function () {
 
     // @phpstan-ignore property.notFound
     $notes = $user->companies()->where('company_id', $company->id)->first()->pivot->quick_notes;
-    
+
     /** @var string|null $notes */
     expect($notes)->toBe('This is a new quick note.');
 });
