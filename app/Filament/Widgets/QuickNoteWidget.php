@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Company;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -33,7 +34,7 @@ class QuickNoteWidget extends Widget implements HasForms
         $quickNotes = null;
 
         if ($tenant instanceof Company) {
-            /** @var \App\Models\User|null $user */
+            /** @var User|null $user */
             $user = auth()->user();
             $company = $user?->companies()->where('companies.id', $tenant->id)->first();
             // @phpstan-ignore property.notFound
@@ -63,7 +64,7 @@ class QuickNoteWidget extends Widget implements HasForms
     {
         $data = $this->form->getState();
 
-        /** @var \App\Models\User|null $user */
+        /** @var User|null $user */
         $user = auth()->user();
         $tenant = Filament::getTenant();
 
