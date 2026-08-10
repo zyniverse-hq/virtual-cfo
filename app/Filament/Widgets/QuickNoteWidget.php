@@ -33,7 +33,9 @@ class QuickNoteWidget extends Widget implements HasForms
         $quickNotes = null;
 
         if ($tenant instanceof Company) {
-            $company = auth()->user()?->companies()->where('company_id', $tenant->id)->first();
+            /** @var \App\Models\User|null $user */
+            $user = auth()->user();
+            $company = $user?->companies()->where('companies.id', $tenant->id)->first();
             // @phpstan-ignore property.notFound
             $quickNotes = $company?->pivot?->quick_notes;
         }
@@ -61,6 +63,7 @@ class QuickNoteWidget extends Widget implements HasForms
     {
         $data = $this->form->getState();
 
+        /** @var \App\Models\User|null $user */
         $user = auth()->user();
         $tenant = Filament::getTenant();
 

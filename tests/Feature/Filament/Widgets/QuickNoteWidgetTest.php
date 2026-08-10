@@ -10,7 +10,7 @@ use function Pest\Livewire\livewire;
 
 it('renders the quick note widget on the dashboard', function () {
     /** @var User $user */
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
     $company = Company::factory()->create();
     $user->companies()->attach($company);
 
@@ -22,7 +22,7 @@ it('renders the quick note widget on the dashboard', function () {
 
 it('can save quick notes for the authenticated user and tenant', function () {
     /** @var User $user */
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
     $company = Company::factory()->create();
     $user->companies()->attach($company, ['quick_notes' => 'Old note']);
 
@@ -39,7 +39,7 @@ it('can save quick notes for the authenticated user and tenant', function () {
     $user->refresh();
 
     // @phpstan-ignore property.notFound
-    $notes = $user->companies()->where('company_id', $company->id)->first()->pivot->quick_notes;
+    $notes = $user->companies()->where('companies.id', $company->id)->first()->pivot->quick_notes;
 
     /** @var string|null $notes */
     expect($notes)->toBe('This is a new quick note.');
@@ -47,7 +47,7 @@ it('can save quick notes for the authenticated user and tenant', function () {
 
 it('handles null tenant gracefully on mount', function () {
     /** @var User $user */
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
 
     actingAs($user);
     Filament::setTenant(null);
@@ -58,7 +58,7 @@ it('handles null tenant gracefully on mount', function () {
 
 it('handles null tenant gracefully on save', function () {
     /** @var User $user */
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
 
     actingAs($user);
     Filament::setTenant(null);
