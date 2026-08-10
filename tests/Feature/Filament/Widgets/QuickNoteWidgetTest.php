@@ -15,7 +15,7 @@ it('renders the quick note widget on the dashboard', function () {
     $user->companies()->attach($company);
 
     actingAs($user)
-        ->get('/admin')
+        ->get('/admin/'.$company->id)
         // @phpstan-ignore method.notFound
         ->assertSeeLivewire(QuickNoteWidget::class);
 });
