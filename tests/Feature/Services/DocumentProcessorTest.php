@@ -71,7 +71,9 @@ describe('DocumentProcessor', function () {
 
             Storage::put('statements/test.csv', $csvContent);
 
-            $file = ImportedFile::factory()->csv()->create([
+            $company = Company::factory()->create(['currency' => 'EUR']);
+
+            $file = ImportedFile::factory()->csv()->for($company)->create([
                 'file_path' => 'statements/test.csv',
                 'original_filename' => 'HDFC_statement.csv',
                 'status' => ImportStatus::Pending,
@@ -90,7 +92,8 @@ describe('DocumentProcessor', function () {
 
             $first = $transactions->first();
             expect($first->description)->toBe('SALARY JAN 2024')
-                ->and($first->mapping_type)->toBe(MappingType::Unmapped);
+                ->and($first->mapping_type)->toBe(MappingType::Unmapped)
+                ->and($first->currency)->toBe($company->currency);
         });
 
         it('handles CSV with alternative column names', function () {
