@@ -138,18 +138,12 @@ class TallyExportService
         $xml .= '      <REQUESTDESC>'."\n";
         $reportName = $this->isAllMastersExport($transactions, $importedFile, $firstRaw) ? 'All Masters' : 'Vouchers';
         $xml .= '        <REPORTNAME>'.$reportName.'</REPORTNAME>'."\n";
-        $xml .= '        <STATICVARIABLES>'."\n";
-        $xml .= '          <SVCURRENTCOMPANY>'.$this->escapeXml($companyName).'</SVCURRENTCOMPANY>'."\n";
-        $xml .= '        </STATICVARIABLES>'."\n";
+
         $xml .= '      </REQUESTDESC>'."\n";
         $xml .= '      <REQUESTDATA>'."\n";
 
         foreach ($transactions as $transaction) {
             $xml .= $this->generateVoucher($transaction, $company, $bankLedgerName, $importedFile);
-        }
-
-        if ($company && $transactions->isNotEmpty()) {
-            $xml .= $this->generateCompanyFooter($company);
         }
 
         $xml .= '      </REQUESTDATA>'."\n";
@@ -354,7 +348,7 @@ class TallyExportService
             : $baseAmount + $cgstAmount + $sgstAmount;
 
         $xml = '        <TALLYMESSAGE xmlns:UDF="TallyUDF">'."\n";
-        $xml .= '          <VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">'."\n";
+        $xml .= '          <VOUCHER VCHTYPE="Sales" ACTION="Create">'."\n";
         $xml .= '            <DATE>'.$date.'</DATE>'."\n";
         $xml .= '            <NARRATION>'.$this->escapeXml($narration).'</NARRATION>'."\n";
         $xml .= '            <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>'."\n";
@@ -374,8 +368,8 @@ class TallyExportService
             $xml .= '            <PLACEOFSUPPLY>'.$this->escapeXml($placeOfSupply).'</PLACEOFSUPPLY>'."\n";
         }
 
-        $xml .= '            <ISINVOICE>Yes</ISINVOICE>'."\n";
-        $xml .= '            <VCHENTRYMORE>Accounting Invoice</VCHENTRYMORE>'."\n";
+        $xml .= '            <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>'."\n";
+        $xml .= '            <ISINVOICE>No</ISINVOICE>'."\n";
         $xml .= '            <NUMBERINGSTYLE>Manual</NUMBERINGSTYLE>'."\n";
         $xml .= '            <EFFECTIVEDATE>'.$date.'</EFFECTIVEDATE>'."\n";
         $xml .= '            <ISREVERSCHARGEAPPLICABLE>No</ISREVERSCHARGEAPPLICABLE>'."\n";
@@ -389,14 +383,14 @@ class TallyExportService
             $xml .= '            </ADDRESS.LIST>'."\n";
         }
 
-        $xml .= '            <LEDGERENTRIES.LIST>'."\n";
+        $xml .= '            <ALLLEDGERENTRIES.LIST>'."\n";
         $xml .= '              <LEDGERNAME>'.$this->escapeXml($buyerName).'</LEDGERNAME>'."\n";
         $xml .= '              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>'."\n";
         $xml .= '              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>'."\n";
         $xml .= '              <AMOUNT>-'.number_format($partyAmount, 2, '.', '').'</AMOUNT>'."\n";
-        $xml .= '            </LEDGERENTRIES.LIST>'."\n";
+        $xml .= '            </ALLLEDGERENTRIES.LIST>'."\n";
 
-        $xml .= '            <LEDGERENTRIES.LIST>'."\n";
+        $xml .= '            <ALLLEDGERENTRIES.LIST>'."\n";
         $xml .= '              <LEDGERNAME>'.$this->escapeXml($serviceName).'</LEDGERNAME>'."\n";
         $xml .= '              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>'."\n";
         $xml .= '              <ISPARTYLEDGER>No</ISPARTYLEDGER>'."\n";
@@ -428,7 +422,7 @@ class TallyExportService
             $xml .= '              </RATEDETAILS.LIST>'."\n";
         }
 
-        $xml .= '            </LEDGERENTRIES.LIST>'."\n";
+        $xml .= '            </ALLLEDGERENTRIES.LIST>'."\n";
 
         if ($hasIgst) {
             $xml .= $this->generateOutputTaxLedgerEntry(
@@ -462,7 +456,7 @@ class TallyExportService
 
     private function generateOutputTaxLedgerEntry(string $ledgerName, float|int $rate, float $amount): string
     {
-        $xml = '            <LEDGERENTRIES.LIST>'."\n";
+        $xml = '            <ALLLEDGERENTRIES.LIST>'."\n";
         $xml .= '              <LEDGERNAME>'.$this->escapeXml($ledgerName).'</LEDGERNAME>'."\n";
         $xml .= '              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>'."\n";
         $xml .= '              <ISPARTYLEDGER>No</ISPARTYLEDGER>'."\n";
@@ -470,7 +464,7 @@ class TallyExportService
         $xml .= '                <RATEOFINVOICETAX>'.$rate.'</RATEOFINVOICETAX>'."\n";
         $xml .= '              </RATEOFINVOICETAX.LIST>'."\n";
         $xml .= '              <AMOUNT>'.number_format($amount, 2, '.', '').'</AMOUNT>'."\n";
-        $xml .= '            </LEDGERENTRIES.LIST>'."\n";
+        $xml .= '            </ALLLEDGERENTRIES.LIST>'."\n";
 
         return $xml;
     }
@@ -601,34 +595,6 @@ class TallyExportService
             'TAXTYPEALLOCATIONS',
         ]);
         $xml .= '            </ALLLEDGERENTRIES.LIST>'."\n";
-
-        return $xml;
-    }
-
-    /**
-     * Generate the company identity footer block.
-     * Two REMOTECMPINFO.LIST entries: one keyed by company name, one by GSTIN.
-     */
-    private function generateCompanyFooter(Company $company): string
-    {
-        $name = $this->escapeXml($company->name ?? '');
-        $gstin = $this->escapeXml($company->gstin ?? '');
-        $state = $this->escapeXml($company->state ?? '');
-
-        $xml = '        <TALLYMESSAGE xmlns:UDF="TallyUDF">'."\n";
-        $xml .= '          <COMPANY>'."\n";
-        $xml .= '            <REMOTECMPINFO.LIST MERGE="Yes">'."\n";
-        $xml .= '              <NAME>'.$name.'</NAME>'."\n";
-        $xml .= '              <REMOTECMPNAME>'.$name.'</REMOTECMPNAME>'."\n";
-        $xml .= '              <REMOTECMPSTATE>'.$state.'</REMOTECMPSTATE>'."\n";
-        $xml .= '            </REMOTECMPINFO.LIST>'."\n";
-        $xml .= '            <REMOTECMPINFO.LIST MERGE="Yes">'."\n";
-        $xml .= '              <NAME>'.$gstin.'</NAME>'."\n";
-        $xml .= '              <REMOTECMPNAME>'.$name.'</REMOTECMPNAME>'."\n";
-        $xml .= '              <REMOTECMPSTATE>'.$state.'</REMOTECMPSTATE>'."\n";
-        $xml .= '            </REMOTECMPINFO.LIST>'."\n";
-        $xml .= '          </COMPANY>'."\n";
-        $xml .= '        </TALLYMESSAGE>'."\n";
 
         return $xml;
     }
