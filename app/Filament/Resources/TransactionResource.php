@@ -528,6 +528,7 @@ class TransactionResource extends Resource
                                 $query->whereDate('date', '<=', $data['until']);
                             }
 
+                            /** @var Collection<int, Transaction> $transactions */
                             $transactions = $query->get();
 
                             $service = app(TallyExportService::class);
