@@ -213,6 +213,7 @@ class Transaction extends Model
     {
         $this->update([
             'company_id' => $target->id,
+            'currency' => $target->currency,
             'account_head_id' => null,
             'mapping_type' => MappingType::Unmapped,
             'ai_confidence' => null,

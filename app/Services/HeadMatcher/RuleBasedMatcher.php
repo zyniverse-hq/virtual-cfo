@@ -103,6 +103,7 @@ class RuleBasedMatcher
             if ($a->priority === null && $b->priority !== null) {
                 return 1;
             }
+            /** @phpstan-ignore notIdentical.alwaysTrue */
             if ($a->priority !== null && $b->priority !== null) {
                 $priorityDiff = $a->priority - $b->priority;
                 if ($priorityDiff !== 0) {

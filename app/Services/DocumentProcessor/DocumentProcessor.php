@@ -119,6 +119,7 @@ class DocumentProcessor
                     'debit' => $normalized['debit'],
                     'credit' => $normalized['credit'],
                     'balance' => $normalized['balance'],
+                    'currency' => $file->company?->currency ?? 'INR',
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,
                     'bank_format' => $file->bank_name,
@@ -461,6 +462,8 @@ class DocumentProcessor
         }
 
         DB::transaction(function () use ($file, $bankName, $accountNumber, $accountHolderName, $statementPeriod, $cardVariant, $transactions, $previousBalance) {
+            $currency = $file->company?->currency ?? 'INR';
+
             $fileUpdates = [
                 'status' => ImportStatus::Completed,
                 'mapped_rows' => 0,
@@ -537,6 +540,7 @@ class DocumentProcessor
                     'debit' => $debit,
                     'credit' => $credit,
                     'balance' => isset($row['balance']) ? (string) $row['balance'] : null,
+                    'currency' => $currency,
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,
                     'bank_format' => $bankName,
@@ -561,6 +565,7 @@ class DocumentProcessor
                     'debit' => (string) $previousBalance,
                     'credit' => null,
                     'balance' => null,
+                    'currency' => $currency,
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => ['previous_balance' => $previousBalance],
                     'bank_format' => $bankName,

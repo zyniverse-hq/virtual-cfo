@@ -72,7 +72,9 @@ describe('DocumentProcessor', function () {
 
             Storage::put('statements/test.csv', $csvContent);
 
-            $file = ImportedFile::factory()->csv()->create([
+            $company = Company::factory()->create(['currency' => 'EUR']);
+
+            $file = ImportedFile::factory()->csv()->for($company)->create([
                 'file_path' => 'statements/test.csv',
                 'original_filename' => 'HDFC_statement.csv',
                 'status' => ImportStatus::Pending,
@@ -91,7 +93,8 @@ describe('DocumentProcessor', function () {
 
             $first = $transactions->first();
             expect($first->description)->toBe('SALARY JAN 2024')
-                ->and($first->mapping_type)->toBe(MappingType::Unmapped);
+                ->and($first->mapping_type)->toBe(MappingType::Unmapped)
+                ->and($first->currency)->toBe($company->currency);
         });
 
         it('handles CSV with alternative column names', function () {
@@ -239,6 +242,32 @@ describe('DocumentProcessor', function () {
             expect($file->status)->toBe(ImportStatus::Completed)
                 ->and($file->bank_name)->toBe('HDFC Bank')
                 ->and($file->total_rows)->toBe(1);
+        });
+
+        it('saves the company default currency on bank statement import transactions', function () {
+            Storage::put('statements/currency_bank.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'transactions' => [
+                        ['date' => '2024-01-05', 'description' => 'SALARY', 'credit' => 50000, 'balance' => 150000],
+                    ],
+                ],
+            ]);
+
+            $company = Company::factory()->create(['currency' => 'USD']);
+            $file = ImportedFile::factory()->for($company)->create([
+                'file_path' => 'statements/currency_bank.pdf',
+                'original_filename' => 'bank_currency.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transaction = Transaction::where('imported_file_id', $file->id)->first();
+            expect($transaction->currency)->toBe('USD');
         });
 
         it('regenerates display name dynamically if it was a default fallback', function () {
@@ -1334,7 +1363,8 @@ describe('DocumentProcessor', function () {
                 ->first();
 
             expect($previousBalanceTx)->not->toBeNull()
-                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01');
+                ->and($previousBalanceTx->date->format('Y-m-d'))->toBe('2026-04-01')
+                ->and($previousBalanceTx->currency)->toBe($file->company->currency);
         });
 
         it('uses statement period start date for Previous Balance transaction when period uses slash-separated Indian format', function () {
