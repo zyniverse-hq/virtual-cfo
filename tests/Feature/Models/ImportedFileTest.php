@@ -1,6 +1,9 @@
 <?php
 
 use App\Enums\ImportSource;
+use App\Enums\StatementType;
+use App\Models\BankAccount;
+use App\Models\CreditCard;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Models\TransactionAggregate;
@@ -239,6 +242,65 @@ describe('ImportedFile force-delete aggregate cleanup', function () {
         expect($aggregate)->not->toBeNull()
             ->and((float) $aggregate->total_debit)->toBe(0.0)
             ->and($aggregate->transaction_count)->toBe(0);
+    });
+});
+
+describe('ImportedFile::getFullBankOrCardName', function () {
+    it('collapses a card variant that is contained in the card name', function () {
+        $card = CreditCard::factory()->create(['name' => 'ICICI Bank']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'ICICI Bank',
+            'card_variant' => 'ICICI',
+        ]);
+
+        expect($file->getFullBankOrCardName())->toBe('ICICI Bank');
+    });
+
+    it('collapses a card variant that is contained in the bank name', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => null,
+            'bank_name' => 'HDFC Bank',
+            'card_variant' => 'HDFC',
+        ]);
+
+        expect($file->getFullBankOrCardName())->toBe('HDFC Bank');
+    });
+
+    it('prefers the card variant over the linked card record name', function () {
+        $card = CreditCard::factory()->create(['name' => 'HDFC Credit Card']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => $card->id,
+            'bank_name' => 'HDFC Bank',
+            'card_variant' => 'Millennia',
+        ]);
+
+        expect($file->getFullBankOrCardName())->toBe('HDFC Bank Millennia');
+    });
+
+    it('keeps a card variant that does not overlap the bank name', function () {
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::CreditCard,
+            'credit_card_id' => null,
+            'bank_name' => 'HDFC Bank',
+            'card_variant' => 'Paytm',
+        ]);
+
+        expect($file->getFullBankOrCardName())->toBe('HDFC Bank Paytm');
+    });
+
+    it('returns the detected bank name for a bank statement with a linked bank account', function () {
+        $account = BankAccount::factory()->create(['name' => 'Zysk Current A/c 5001']);
+        $file = ImportedFile::factory()->create([
+            'statement_type' => StatementType::Bank,
+            'bank_account_id' => $account->id,
+            'bank_name' => 'HDFC Bank',
+        ]);
+
+        expect($file->getFullBankOrCardName())->toBe('HDFC Bank');
     });
 });
 

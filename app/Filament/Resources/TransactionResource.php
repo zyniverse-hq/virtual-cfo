@@ -13,6 +13,7 @@ use App\Exports\TransactionExcelExport;
 use App\Filament\Resources\TransactionResource\Pages;
 use App\Jobs\MatchTransactionHeads;
 use App\Models\AccountHead;
+use App\Models\BankAccount;
 use App\Models\Company;
 use App\Models\CreditCard;
 use App\Models\HeadMapping;
@@ -122,21 +123,92 @@ class TransactionResource extends Resource
                         Forms\Components\Select::make('value')
                             ->label('Type')
                             ->options(StatementType::class)
-                            ->placeholder('All types'),
+                            ->placeholder('All types')
+                            ->live()
+                            ->afterStateUpdated(function ($set) {
+                                $set('credit_card_id', null);
+                                $set('bank_account_id', null);
+                            }),
+
+                        Forms\Components\Select::make('credit_card_id')
+                            ->label('Credit Card')
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? CreditCard::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
+                            ->visible(fn ($get) => self::resolveStatementType($get('value')) === StatementType::CreditCard)
+                            ->searchable(),
+
+                        Forms\Components\Select::make('bank_account_id')
+                            ->label('Bank Account')
+                            ->options(function () {
+                                /** @var Company|null $tenant */
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? BankAccount::visibleToCompany($tenant->id)->pluck('name', 'id') : [];
+                            })
+                            ->visible(fn ($get) => self::resolveStatementType($get('value')) === StatementType::Bank)
+                            ->searchable(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (blank($data['value'])) {
+                        $type = self::resolveStatementType($data['value'] ?? null);
+
+                        if ($type === null) {
                             return $query;
                         }
 
-                        return $query->whereHas('importedFile', fn (Builder $q) => $q->where('statement_type', $data['value']));
+                        $card = $type === StatementType::CreditCard
+                            ? self::resolveVisibleCreditCard($data['credit_card_id'] ?? null)
+                            : null;
+
+                        $bankAccount = $type === StatementType::Bank
+                            ? self::resolveVisibleBankAccount($data['bank_account_id'] ?? null)
+                            : null;
+
+                        return $query->whereHas('importedFile', function (Builder $q) use ($type, $card, $bankAccount) {
+                            $q->where('statement_type', $type->value);
+
+                            if ($card !== null) {
+                                $q->where('credit_card_id', $card->id);
+                            }
+
+                            if ($bankAccount !== null) {
+                                $q->where('bank_account_id', $bankAccount->id);
+                            }
+                        });
                     })
-                    ->indicateUsing(function (array $data): ?string {
-                        if (blank($data['value'])) {
-                            return null;
+                    ->indicateUsing(function (array $data): array {
+                        $type = self::resolveStatementType($data['value'] ?? null);
+
+                        if ($type === null) {
+                            return [];
                         }
 
-                        return StatementType::tryFrom($data['value'])?->getLabel();
+                        $indicators = [
+                            Tables\Filters\Indicator::make($type->getLabel())->removeField('value'),
+                        ];
+
+                        if ($type === StatementType::CreditCard) {
+                            $card = self::resolveVisibleCreditCard($data['credit_card_id'] ?? null);
+
+                            if ($card !== null) {
+                                $indicators[] = Tables\Filters\Indicator::make("Card: {$card->name}")
+                                    ->removeField('credit_card_id');
+                            }
+                        }
+
+                        if ($type === StatementType::Bank) {
+                            $bankAccount = self::resolveVisibleBankAccount($data['bank_account_id'] ?? null);
+
+                            if ($bankAccount !== null) {
+                                $indicators[] = Tables\Filters\Indicator::make("Bank: {$bankAccount->name}")
+                                    ->removeField('bank_account_id');
+                            }
+                        }
+
+                        return $indicators;
                     }),
 
                 Tables\Filters\SelectFilter::make('mapping_type')
@@ -578,6 +650,89 @@ class TransactionResource extends Resource
                     ->close(),
             ])
             ->send();
+    }
+
+    /**
+     * Resolve a filter value into a StatementType.
+     *
+     * Filament's enum-backed Select hands closures a StatementType instance via
+     * its EnumStateCast, while raw table-filter state (query string, session)
+     * arrives as a string. Invalid strings resolve to null rather than crashing.
+     */
+    private static function resolveStatementType(mixed $value): ?StatementType
+    {
+        if ($value instanceof StatementType) {
+            return $value;
+        }
+
+        if (is_string($value) && ! blank($value)) {
+            return StatementType::tryFrom($value);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve raw subfilter state into a credit card the current tenant may see.
+     *
+     * Table filter state is client-writable and is never revalidated against the
+     * Select's options, so the value may be another company's key or a non-numeric
+     * string. Either yields null, making the subfilter a no-op instead of leaking a
+     * name or crashing the page on a bigint cast. Soft-deleted cards still resolve,
+     * so their indicator stays visible and removable.
+     *
+     * Array-shaped state is not covered here — Filament's OptionStateCast fails on
+     * it before any filter closure runs, for every single Select in the panel.
+     */
+    private static function resolveVisibleCreditCard(mixed $value): ?CreditCard
+    {
+        $id = self::resolveSubfilterId($value);
+        /** @var Company|null $tenant */
+        $tenant = Filament::getTenant();
+
+        if ($id === null || $tenant === null) {
+            return null;
+        }
+
+        return CreditCard::withTrashed()
+            ->visibleToCompany($tenant->id)
+            ->whereKey($id)
+            ->first();
+    }
+
+    /**
+     * Resolve raw subfilter state into a bank account the current tenant may see.
+     *
+     * @see self::resolveVisibleCreditCard() for why the state cannot be trusted.
+     */
+    private static function resolveVisibleBankAccount(mixed $value): ?BankAccount
+    {
+        $id = self::resolveSubfilterId($value);
+        /** @var Company|null $tenant */
+        $tenant = Filament::getTenant();
+
+        if ($id === null || $tenant === null) {
+            return null;
+        }
+
+        return BankAccount::withTrashed()
+            ->visibleToCompany($tenant->id)
+            ->whereKey($id)
+            ->first();
+    }
+
+    /**
+     * Narrow untrusted subfilter state to a positive integer key, or null.
+     */
+    private static function resolveSubfilterId(mixed $value): ?int
+    {
+        if (! is_string($value) && ! is_int($value)) {
+            return null;
+        }
+
+        $id = filter_var($value, FILTER_VALIDATE_INT);
+
+        return $id !== false && $id > 0 ? $id : null;
     }
 
     /** @return Builder<Transaction>|null */

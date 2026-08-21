@@ -2,13 +2,15 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Actions\Action;
+use App\Filament\Concerns\HasPageTour;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 
 class Dashboard extends BaseDashboard
 {
+    use HasPageTour;
+
     public function getHeading(): string
     {
         return 'Welcome, '.Auth::user()->name.'!';
@@ -22,18 +24,12 @@ class Dashboard extends BaseDashboard
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('page_tour')
-                ->label('Page Tour')
-                ->icon('heroicon-o-academic-cap')
-                ->color('gray')
-                ->extraAttributes([
-                    'x-on:click.prevent' => "\$dispatch('start-page-tour')",
-                ]),
+            $this->getPageTourAction(),
         ];
     }
 
     public function getFooter(): ?View
     {
-        return view('livewire.page-tour-embed', ['pageId' => 'dashboard']);
+        return $this->getPageTourFooter('dashboard');
     }
 }

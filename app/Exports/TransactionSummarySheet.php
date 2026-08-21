@@ -2,6 +2,8 @@
 
 namespace App\Exports;
 
+use App\Exports\Concerns\AppliesTableStyling;
+use App\Exports\Concerns\CalculatesClosingBalance;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\ImportedFile;
@@ -18,6 +20,9 @@ use Maatwebsite\Excel\Events\AfterSheet;
 
 class TransactionSummarySheet implements FromCollection, WithCustomStartCell, WithEvents, WithHeadings, WithTitle
 {
+    use AppliesTableStyling;
+    use CalculatesClosingBalance;
+
     /** @param Builder<Transaction>|null $baseQuery */
     public function __construct(
         public ?string $from = null,
@@ -42,16 +47,8 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
             return '';
         }
 
-        $file = $this->importedFile;
-        $bankName = $file->bank_name ?? '';
-
-        if ($file->credit_card_id) {
-            $file->loadMissing('creditCard');
-            $cardName = $file->creditCard?->name;
-            $bankName = $cardName ? trim("{$bankName} {$cardName}") : $bankName;
-        }
-
-        $holderName = $file->account_holder_name;
+        $bankName = $this->importedFile->getFullBankOrCardName();
+        $holderName = $this->importedFile->account_holder_name;
 
         return $holderName ? "{$bankName} — {$holderName}" : $bankName;
     }
@@ -88,6 +85,8 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 ->whereNotNull('account_head_id')
                 ->with('accountHead');
         }
+
+        $query->where('is_synthetic', false);
 
         if ($this->from) {
             $query->whereDate('date', '>=', $this->from);
@@ -150,7 +149,7 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 $totalsRow = $lastDataRow + 1;
 
                 if ($hasMetadata) {
-                    $sheet->setCellValue('A1', 'Card / Account:');
+                    $sheet->setCellValue('A1', $this->importedFile->getExportAccountTitle());
                     $sheet->setCellValue('B1', $this->resolveAccountLabel());
                     $sheet->setCellValue('A2', 'Statement Period:');
                     $sheet->setCellValue('B2', $this->importedFile->statement_period ?? '');
@@ -181,7 +180,12 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 if ($hasMetadata) {
                     $closingRow = $totalsRow + 1;
                     $sheet->setCellValue("A{$closingRow}", 'Closing Balance');
-                    $sheet->setCellValue("B{$closingRow}", "=B3+C{$totalsRow}-B{$totalsRow}");
+                    $sheet->setCellValue("B{$closingRow}", $this->closingBalanceFormula(
+                        $this->importedFile->statement_type,
+                        'B3',
+                        "B{$totalsRow}",
+                        "C{$totalsRow}",
+                    ));
                     $sheet->getStyle("{$closingRow}:{$closingRow}")->getFont()->setBold(true);
                     $sheet->getRowDimension($closingRow)->setRowHeight(20);
                 }
@@ -189,6 +193,12 @@ class TransactionSummarySheet implements FromCollection, WithCustomStartCell, Wi
                 for ($i = $headerRow; $i <= $totalsRow; $i++) {
                     $sheet->getRowDimension($i)->setRowHeight(20);
                 }
+
+                $this->applyTableStyling(
+                    $sheet,
+                    "A{$headerRow}:D{$totalsRow}",
+                    "A{$headerRow}:D{$headerRow}",
+                );
             },
         ];
     }

@@ -163,6 +163,7 @@ class ImportedFile extends Model
         return $this->belongsTo(CreditCard::class);
     }
 
+    /** @return HasMany<Transaction, $this> */
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
@@ -192,5 +193,49 @@ class ImportedFile extends Model
         }
 
         return round(($this->mapped_rows / $this->total_rows) * 100, 1);
+    }
+
+    public function getExportAccountTitle(): string
+    {
+        return $this->statement_type === StatementType::CreditCard ? 'Card:' : 'Account:';
+    }
+
+    /**
+     * Build the display name of the account or card this file belongs to, combining the
+     * detected bank name, the linked card record, and the parsed card variant without
+     * repeating any part. The variant is preferred over the card record name.
+     */
+    public function getFullBankOrCardName(): string
+    {
+        $bankName = trim((string) $this->bank_name);
+        $variant = trim((string) $this->card_variant);
+        $cardName = '';
+
+        if ($this->credit_card_id !== null) {
+            $this->loadMissing('creditCard');
+            $cardName = trim((string) $this->creditCard?->name);
+        }
+
+        return $this->mergeNameParts($bankName ?: $cardName, $variant ?: $cardName);
+    }
+
+    /**
+     * Join two name fragments, collapsing to the longer one when either contains the other.
+     */
+    private function mergeNameParts(string $prefix, string $suffix): string
+    {
+        if ($prefix === '' || $suffix === '') {
+            return $prefix.$suffix;
+        }
+
+        if (stripos($suffix, $prefix) !== false) {
+            return $suffix;
+        }
+
+        if (stripos($prefix, $suffix) !== false) {
+            return $prefix;
+        }
+
+        return "{$prefix} {$suffix}";
     }
 }

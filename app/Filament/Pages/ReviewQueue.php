@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\MappingType;
+use App\Filament\Concerns\HasPageTour;
 use App\Models\AccountHead;
 use App\Models\Company;
 use App\Models\Transaction;
@@ -19,11 +20,13 @@ use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
 {
+    use HasPageTour;
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
@@ -37,6 +40,18 @@ class ReviewQueue extends Page implements HasActions, HasSchemas, HasTable
     protected static ?int $navigationSort = 3;
 
     protected string $view = 'filament.pages.review-queue';
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            $this->getPageTourAction(),
+        ];
+    }
+
+    public function getFooter(): ?View
+    {
+        return $this->getPageTourFooter('review-queue');
+    }
 
     public function table(Table $table): Table
     {
