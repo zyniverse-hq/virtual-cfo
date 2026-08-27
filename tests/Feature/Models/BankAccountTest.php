@@ -128,7 +128,9 @@ describe('BankAccount activity log', function () {
         $account = BankAccount::factory()->create();
         $account->update(['name' => 'Updated Bank']);
 
-        expect($account->activities)->toHaveCount(2)
-            ->and($account->activities->last()->description)->toBe('updated');
+        $activities = $account->activities()->orderBy('id')->get();
+
+        expect($activities)->toHaveCount(2)
+            ->and($activities->last()->description)->toBe('updated');
     });
 });
