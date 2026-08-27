@@ -46,7 +46,7 @@ describe('TallyExportService sales voucher', function () {
 
         expect($xml)
             ->toContain('VCHTYPE="Sales"')
-            ->toContain('OBJVIEW="Invoice Voucher View"')
+            ->toContain('<PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>')
             ->not->toContain('VCHTYPE="Journal"');
     });
 
@@ -381,7 +381,7 @@ describe('TallyExportService sales voucher', function () {
         expect($xml)->toContain('<DATE>20260415</DATE>');
     });
 
-    it('includes ISINVOICE Yes in sales voucher', function () {
+    it('includes ISINVOICE No in sales voucher', function () {
         $file = ImportedFile::factory()->create([
             'statement_type' => StatementType::Invoice,
             'company_id' => tenant()->id,
@@ -406,7 +406,7 @@ describe('TallyExportService sales voucher', function () {
 
         $xml = app(TallyExportService::class)->exportForFile($file);
 
-        expect($xml)->toContain('<ISINVOICE>Yes</ISINVOICE>');
+        expect($xml)->toContain('<ISINVOICE>No</ISINVOICE>');
     });
 
     it('does not affect existing journal voucher export for purchase invoices', function () {

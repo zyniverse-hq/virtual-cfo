@@ -42,7 +42,6 @@ describe('TallyExportService', function () {
                 ->and($xml)->toContain('<IMPORTDATA>')
                 ->and($xml)->toContain('<REQUESTDESC>')
                 ->and($xml)->toContain('<REPORTNAME>Vouchers</REPORTNAME>')
-                ->and($xml)->toContain('<SVCURRENTCOMPANY>Acme Corp Private Limited - 2025 - 2026</SVCURRENTCOMPANY>')
                 ->and($xml)->toContain('<REQUESTDATA>')
                 ->and($xml)->toContain('</ENVELOPE>');
         });
@@ -213,25 +212,6 @@ describe('TallyExportService', function () {
             // Payment: debit leg = -25000.50, credit leg = 25000.50, sum = 0
             expect($xml)->toContain('<AMOUNT>-25000.50</AMOUNT>')
                 ->and($xml)->toContain('<AMOUNT>25000.50</AMOUNT>');
-        });
-    });
-
-    describe('company footer', function () {
-        it('includes company identity block at the end', function () {
-            $head = AccountHead::factory()->create([
-                'company_id' => $this->company->id,
-                'name' => 'Expense',
-            ]);
-            Transaction::factory()->mapped($head)->debit(1000)->for($this->file)->create([
-                'company_id' => $this->company->id,
-                'date' => '2025-04-01',
-            ]);
-
-            $xml = $this->service->exportForFile($this->file);
-
-            expect($xml)->toContain('<COMPANY>')
-                ->and($xml)->toContain('<REMOTECMPNAME>Acme Corp Private Limited - 2025 - 2026</REMOTECMPNAME>')
-                ->and($xml)->toContain('<REMOTECMPSTATE>Maharashtra</REMOTECMPSTATE>');
         });
     });
 

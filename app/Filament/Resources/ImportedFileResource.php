@@ -8,10 +8,13 @@ use App\Enums\StatementType;
 use App\Filament\Resources\ImportedFileResource\Pages;
 use App\Jobs\ProcessImportedFile;
 use App\Models\ImportedFile;
+use App\Models\Transaction;
 use App\Services\StatementClassifier;
+use App\Services\TallyExport\TallyExportService;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -20,8 +23,10 @@ use Filament\Tables;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportedFileResource extends Resource
 {
@@ -267,6 +272,37 @@ class ImportedFileResource extends Resource
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
+                    Actions\BulkAction::make('export_tally')
+                        ->label('Export to Tally XML')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->action(function (Collection $records): ?StreamedResponse {
+                            /** @var Collection<int, Transaction> $transactions */
+                            $transactions = Transaction::query()
+                                ->whereIn('imported_file_id', $records->pluck('id'))
+                                ->whereNotNull('account_head_id')
+                                ->with(['accountHead', 'importedFile.company', 'importedFile.bankAccount'])
+                                ->orderBy('date')
+                                ->get();
+
+                            if ($transactions->isEmpty()) {
+                                Notification::make()
+                                    ->warning()
+                                    ->title('No mapped transactions to export')
+                                    ->body('None of the selected files contain mapped transactions with an assigned account head.')
+                                    ->send();
+
+                                return null;
+                            }
+
+                            $xml = app(TallyExportService::class)->exportTransactions($transactions);
+
+                            return response()->streamDownload(
+                                fn () => print ($xml),
+                                'tally-export-'.now()->format('Y-m-d-His').'.xml',
+                                ['Content-Type' => 'application/xml']
+                            );
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     Actions\DeleteBulkAction::make(),
                     Actions\ForceDeleteBulkAction::make(),
                     Actions\RestoreBulkAction::make(),
