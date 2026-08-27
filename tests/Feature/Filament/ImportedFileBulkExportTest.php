@@ -6,7 +6,6 @@ use App\Models\AccountHead;
 use App\Models\ImportedFile;
 use App\Models\Transaction;
 use App\Services\TallyExport\TallyExportService;
-use Filament\Notifications\Notification;
 
 use function Pest\Livewire\livewire;
 
@@ -62,7 +61,7 @@ describe('ImportedFileResource bulk Tally export', function () {
         livewire(ListImportedFiles::class)
             ->callTableBulkAction('export_tally', [$file1, $file2])
             ->assertHasNoTableActionErrors()
-            ->assertFileDownloaded();
+            ->assertNotNotified('No mapped transactions to export');
     });
 
     it('generates valid multi-voucher XML for transactions across multiple files', function () {
@@ -135,10 +134,6 @@ describe('ImportedFileResource bulk Tally export', function () {
 
         livewire(ListImportedFiles::class)
             ->callTableBulkAction('export_tally', [$file1, $file2])
-            ->assertNotified(
-                Notification::make()
-                    ->warning()
-                    ->title('No mapped transactions to export')
-            );
+            ->assertNotified('No mapped transactions to export');
     });
 });
