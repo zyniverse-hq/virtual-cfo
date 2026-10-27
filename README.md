@@ -92,7 +92,7 @@ php artisan make:filament-user
 | `DB_DATABASE` | Database name | `virtual_cfo` |
 | `QUEUE_CONNECTION` | Queue backend | `database` |
 | `OPENROUTER_API_KEY` | OpenRouter API key for AI features | — |
-| `AI_PARSING_MODEL` | Model for statement parsing | `deepseek/deepseek-v3.2` |
+| `AI_PARSING_MODEL` | Model for statement parsing (must read PDFs natively) | `google/gemini-3.8-flash` |
 | `AI_MATCHING_MODEL` | Model for head matching | `mistralai/mistral-large-latest` |
 | `MAIL_MAILER` | Mail transport | `mailgun` |
 | `MAILGUN_DOMAIN` | Mailgun sending domain | — |

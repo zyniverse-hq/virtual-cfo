@@ -1555,5 +1555,201 @@ describe('DocumentProcessor', function () {
                 ->and($cashback->debit)->toBeNull()
                 ->and($cashback->credit)->toBeNull();
         });
+
+        it('recovers the amount from the verbatim amount field when debit and credit are missing', function () {
+            Storage::put('statements/cc_amount_only.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI Bank',
+                    'statement_period' => 'May 2026',
+                    'transactions' => [
+                        ['date' => '10/05/2026', 'description' => 'NEEDS SUPER MARKET', 'amount' => '479.00'],
+                        ['date' => '11/05/2026', 'description' => 'PAYMENT RECEIVED', 'amount' => '24,060.00 CR'],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_amount_only.pdf',
+                'original_filename' => 'icici_cc_amount_only.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->get()->keyBy('description');
+
+            expect($transactions['NEEDS SUPER MARKET']->debit)->toBe('479.00')
+                ->and($transactions['NEEDS SUPER MARKET']->credit)->toBeNull()
+                ->and($transactions['PAYMENT RECEIVED']->credit)->toBe('24060.00')
+                ->and($transactions['PAYMENT RECEIVED']->debit)->toBeNull();
+        });
+    });
+
+    describe('signed and Cr/Dr amounts in PDF statements', function () {
+        it('normalizes signed, formatted and Cr/Dr-suffixed amounts returned by the parser', function () {
+            Storage::put('statements/signed.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'May 2026',
+                    'transactions' => [
+                        ['date' => '01/05/2026', 'description' => 'NEGATIVE DEBIT', 'debit' => -500],
+                        ['date' => '02/05/2026', 'description' => 'COMMA STRING', 'debit' => '1,234.50', 'balance' => '12,34,567.89'],
+                        ['date' => '03/05/2026', 'description' => 'CR IN DEBIT', 'debit' => '9,148.42 CR'],
+                        ['date' => '04/05/2026', 'description' => 'SIGNED AMOUNT', 'amount' => '-2,000.00'],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/signed.pdf',
+                'original_filename' => 'hdfc_signed.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->get()->keyBy('description');
+
+            expect($transactions)->toHaveCount(4)
+                ->and($transactions['NEGATIVE DEBIT']->debit)->toBe('500')
+                ->and($transactions['COMMA STRING']->debit)->toBe('1234.50')
+                ->and($transactions['COMMA STRING']->balance)->toBe('1234567.89')
+                ->and($transactions['CR IN DEBIT']->credit)->toBe('9148.42')
+                ->and($transactions['CR IN DEBIT']->debit)->toBeNull()
+                ->and($transactions['SIGNED AMOUNT']->debit)->toBe('2000.00');
+        });
+
+        it('treats minus-signed amounts on a credit card statement as credits and plus as credits', function () {
+            Storage::put('statements/cc_signed.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Sep 2026',
+                    'transactions' => [
+                        ['date' => '17/09/2026', 'description' => 'MYNTRA REFUND', 'amount' => '+ ₹ 1,104.00'],
+                        ['date' => '18/09/2026', 'description' => 'AMEX STYLE REFUND', 'amount' => '-445.00'],
+                        ['date' => '18/09/2026', 'description' => 'BOBS BAR', 'amount' => '₹ 2,274.00', 'debit' => 2274],
+                        ['date' => '19/09/2026', 'description' => 'PLACEHOLDER CREDIT', 'amount' => '544.00', 'debit' => 544, 'credit' => -1],
+                        ['date' => '20/09/2026', 'description' => 'CHARGE PUT IN CREDIT', 'amount' => '₹ 1,950.00', 'credit' => 1950],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_signed.pdf',
+                'original_filename' => 'hdfc_cc_signed.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->get()->keyBy('description');
+
+            expect($transactions['MYNTRA REFUND']->credit)->toBe('1104.00')
+                ->and($transactions['AMEX STYLE REFUND']->credit)->toBe('445.00')
+                ->and($transactions['AMEX STYLE REFUND']->debit)->toBeNull()
+                ->and($transactions['BOBS BAR']->debit)->toBe('2274.00')
+                ->and($transactions['PLACEHOLDER CREDIT']->debit)->toBe('544.00')
+                ->and($transactions['PLACEHOLDER CREDIT']->credit)->toBeNull()
+                ->and($transactions['CHARGE PUT IN CREDIT']->debit)->toBe('1950.00')
+                ->and($transactions['CHARGE PUT IN CREDIT']->credit)->toBeNull();
+        });
+
+        it('reads transaction dates that include a time', function () {
+            Storage::put('statements/cc_datetime.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Sep 2026',
+                    'transactions' => [
+                        ['date' => '18/09/2026| 19:16', 'description' => 'PIPE TIME', 'amount' => '2,274.00', 'debit' => 2274],
+                        ['date' => '20/09/2026 | 00:00', 'description' => 'SPACED PIPE TIME', 'amount' => '1,213.00', 'debit' => 1213],
+                        ['date' => '21/09/2026 07:16 PM', 'description' => 'AM PM TIME', 'amount' => '99.00', 'debit' => 99],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_datetime.pdf',
+                'original_filename' => 'hdfc_cc_datetime.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $dates = Transaction::where('imported_file_id', $file->id)->get()
+                ->mapWithKeys(fn (Transaction $t) => [$t->description => $t->date->toDateString()]);
+
+            expect($dates->all())->toBe([
+                'PIPE TIME' => '2026-09-18',
+                'SPACED PIPE TIME' => '2026-09-20',
+                'AM PM TIME' => '2026-09-21',
+            ]);
+        });
+
+        it('reads a formatted previous balance', function () {
+            Storage::put('statements/cc_prev_balance.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'ICICI Bank',
+                    'statement_period' => '01/05/2026 to 31/05/2026',
+                    'previous_balance' => '1,79,757.37',
+                    'transactions' => [
+                        ['date' => '10/05/2026', 'description' => 'AMAZON', 'debit' => 2000],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_prev_balance.pdf',
+                'original_filename' => 'icici_prev_balance.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $previousBalance = Transaction::where('imported_file_id', $file->id)->where('is_synthetic', true)->first();
+
+            expect((float) $file->refresh()->opening_balance)->toBe(179757.37)
+                ->and($previousBalance?->debit)->toBe('179757.37');
+        });
+    });
+
+    describe('signed and Cr/Dr amounts in CSV statements', function () {
+        it('reads amounts from bank-specific column names', function (string $header, string $row, string $side, string $amount) {
+            Storage::put('statements/bank_columns.csv', "{$header}\n{$row}\n");
+
+            $file = ImportedFile::factory()->csv()->create([
+                'file_path' => 'statements/bank_columns.csv',
+                'original_filename' => 'bank_columns.csv',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transaction = Transaction::where('imported_file_id', $file->id)->first();
+
+            expect($transaction->{$side})->toBe($amount)
+                ->and($transaction->{$side === 'debit' ? 'credit' : 'debit'})->toBeNull();
+        })->with([
+            'HDFC withdrawal' => ['Date,Narration,Withdrawal Amt.,Deposit Amt.,Closing Balance', '01/05/2026,UPI OUT,"3,000.00",,"10,000.00"', 'debit', '3000.00'],
+            'HDFC deposit' => ['Date,Narration,Withdrawal Amt.,Deposit Amt.,Closing Balance', '01/05/2026,SALARY,,"50,000.00","60,000.00"', 'credit', '50000.00'],
+            'ICICI withdrawal' => ['Transaction Date,Transaction Remarks,Withdrawal Amount (INR ),Deposit Amount (INR ),Balance (INR )', '01/05/2026,NEFT OUT,"3,000.00",,"10,000.00"', 'debit', '3000.00'],
+            'signed amount column (debit)' => ['Date,Description,Amount', '01/05/2026,UPI OUT,"-1,200.00"', 'debit', '1200.00'],
+            'signed amount column (credit)' => ['Date,Description,Amount', '01/05/2026,REFUND,"+1,200.00"', 'credit', '1200.00'],
+            'amount with Dr/Cr column' => ['Date,Description,Amount,Dr/Cr', '01/05/2026,NEFT IN,"1,200.00",CR', 'credit', '1200.00'],
+            'Cr suffix in debit column' => ['Date,Description,Debit,Credit', '01/05/2026,REVERSAL,"1,234.50 Cr",', 'credit', '1234.50'],
+            'Dr. suffix with dot' => ['Date,Description,Debit,Credit', '01/05/2026,CHARGES,500.00 Dr.,', 'debit', '500.00'],
+            'dash placeholder' => ['Date,Description,Debit,Credit', '01/05/2026,INTEREST,-,"2,500.00"', 'credit', '2500.00'],
+            'brackets' => ['Date,Description,Debit,Credit', '01/05/2026,FEE,"(1,000.00)",', 'debit', '1000.00'],
+        ]);
     });
 });

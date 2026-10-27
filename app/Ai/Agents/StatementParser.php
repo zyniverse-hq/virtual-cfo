@@ -50,13 +50,25 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
         - Detect the bank name and account number from the header/footer
         - Identify the statement period (start and end dates)
         - Extract the account holder name (individual or company name) from the statement header. Set it as `account_holder_name`. Leave null if not found.
-        - For each transaction, extract: date, description, debit, credit, and running balance
+        - For each transaction, extract: date, description, amount, debit, credit, and running balance
         - Return each transaction date exactly as it appears in the source document (e.g. "10/03/2026", "05-Apr-2026", "17/03/2026"). Do NOT reformat or convert dates.
-        - CRITICAL RULE FOR SINGLE-COLUMN AMOUNTS: If both charges and refunds are in a single "Amount" column, an amount with a "CR" suffix (e.g. "9,148.42 CR") is a refund/payment and MUST be placed in the `credit` field. Amounts with no suffix or a "DR" suffix are standard charges and MUST be placed in the `debit` field. Do NOT guess based on the description.
-        - CRITICAL RULE — NEVER DROP AN AMOUNT: Every transaction row you return MUST have a monetary amount in either `debit` or `credit`. Never return a transaction with both `debit` and `credit` empty. Payments, refunds, cashback, rewards, reversals, and lines such as "Payment Received", "Autodebit Payment Recd.", or "transaction cashback" are money coming IN and MUST be captured in `credit`. If you can see a transaction row but are unsure which column its amount belongs in, still capture the amount using the CR/DR rule above — never omit it.
-        - Strip "CR" or "DR" suffixes, currency symbols, and commas when extracting amounts. The final values in the debit and credit fields must be purely positive absolute numbers.
-        - If a non-amount field (reference or balance) is not present, use null. This does NOT apply to the amount — every row must still have a debit or credit per the rule above.
-        - Extract reference numbers where available
+
+        AMOUNTS — follow these rules exactly:
+        - `amount` (REQUIRED for every row): copy the transaction amount EXACTLY as printed, keeping its sign, currency symbol, brackets and Cr/Dr marker, e.g. "1,234.50", "-1,234.50", "+ ₹ 500.00", "(500.00)", "9,148.42 CR", "250.00 Dr". A sign may be separated from the number by spaces or a currency symbol (often shown in green for credits, e.g. "+ ₹ 1,104.00") — it still belongs to the amount and MUST be copied. Never leave `amount` empty and never shorten it.
+        - Ignore reward-point, cashback-point or similar columns (e.g. a "REWARDS" column showing "+ 55" or "- 25"): they are NOT the transaction amount and their sign says nothing about debit or credit.
+        - Then put the absolute value in exactly ONE of `debit` (money out: purchases, charges, fees, interest, tax, withdrawals) or `credit` (money in: payments received, refunds, cashback, rewards, reversals, deposits). Set the other field to null — never 0, -1 or any other placeholder.
+        - Statements with separate Withdrawal/Debit and Deposit/Credit columns: use the column the amount is printed in.
+        - Statements with a single amount column: decide the side ONLY from the marker on the amount, in this order:
+          1. "Cr", "CR" or "Cr." (as a suffix, prefix, or in a separate Dr/Cr column) → `credit`. "Dr", "DR" or "Dr." → `debit`.
+          2. A "+" before the amount (including "+ ₹ 1,104.00") → `credit`. A "-" before or after the amount, or an amount in brackets "( )": on a BANK ACCOUNT statement → `debit` (money out); on a CREDIT CARD statement → `credit` (a payment or refund that reduces the amount owed).
+          3. No marker at all → `debit` (a standard charge).
+          Do NOT guess the side from the description.
+        - `debit` and `credit` must be plain positive numbers with every digit kept: no commas, currency symbols, signs, brackets or Cr/Dr text (e.g. "12,34,567.89 Cr" → 1234567.89, "(1,000.00)" → 1000).
+        - NEVER DROP AN AMOUNT: every transaction row MUST have a value in `debit` or `credit`. If you are unsure of the side, still fill `amount` and apply the single-column rules above.
+        - `balance`: a plain number with no commas or Cr/Dr text; make it negative only if it is printed with a minus sign or in brackets.
+
+        - `reference`: only the reference or cheque number as printed on that row, or null if there is none. Never repeat or pad it.
+        - If a non-amount field (reference or balance) is not present, use null.
         - Handle multi-line transaction descriptions by concatenating them
 
         For credit card statements, also extract:
@@ -83,6 +95,7 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
                 'date' => $schema->string()->required(),
                 'description' => $schema->string()->required(),
                 'reference' => $schema->string(),
+                'amount' => $schema->string()->required(),
                 'debit' => $schema->number(),
                 'credit' => $schema->number(),
                 'balance' => $schema->number(),

@@ -27,6 +27,7 @@ class DocumentProcessor
     public function __construct(
         private PdfDecryptionService $decryptionService,
         private DisplayNameGenerator $displayNameGenerator,
+        private AmountParser $amountParser,
     ) {}
 
     /**
@@ -96,10 +97,11 @@ class DocumentProcessor
         }
 
         $imported = 0;
+        $negativeSide = $this->negativeAmountSide($file);
 
-        DB::transaction(function () use ($file, $rows, &$imported) {
+        DB::transaction(function () use ($file, $rows, $negativeSide, &$imported) {
             foreach ($rows as $row) {
-                $normalized = $this->normalizeStructuredRow($row);
+                $normalized = $this->normalizeStructuredRow($row, $negativeSide);
 
                 if ($normalized['date'] === null) {
                     Log::warning('Skipping row with unparseable date in structured import', [
@@ -140,9 +142,10 @@ class DocumentProcessor
      * Normalize a structured row from CSV/XLSX to the expected transaction format.
      *
      * @param  array<string, mixed>  $row
+     * @param  'debit'|'credit'  $negativeSide
      * @return array<string, mixed>
      */
-    protected function normalizeStructuredRow(array $row): array
+    protected function normalizeStructuredRow(array $row, string $negativeSide = AmountParser::DEBIT): array
     {
         $normalized = [];
         foreach ($row as $key => $value) {
@@ -151,13 +154,23 @@ class DocumentProcessor
 
         $rawDate = $this->extractField($normalized, ['date', 'transaction_date', 'txn_date', 'value_date', 'posting_date']);
 
+        $amounts = $this->amountParser->resolve(
+            debit: $this->extractField($normalized, ['debit', 'debit_amount', 'debit_amt', 'debit_amount_inr', 'withdrawal', 'withdrawals', 'withdrawal_amt', 'withdrawal_amount', 'withdrawal_amount_inr', 'dr']),
+            credit: $this->extractField($normalized, ['credit', 'credit_amount', 'credit_amt', 'credit_amount_inr', 'deposit', 'deposits', 'deposit_amt', 'deposit_amount', 'deposit_amount_inr', 'cr']),
+            amount: $this->extractField($normalized, ['amount', 'amount_inr', 'transaction_amount', 'txn_amount']),
+            indicator: $this->extractField($normalized, ['drcr', 'dr_cr', 'crdr', 'cr_dr', 'debitcredit', 'debit_credit', 'txn_type', 'transaction_type']),
+            negativeSide: $negativeSide,
+        );
+
         return [
             'date' => $this->parseDateField($rawDate),
-            'description' => $this->extractField($normalized, ['description', 'narration', 'particulars', 'details', 'transaction_description']),
+            'description' => $this->extractField($normalized, ['description', 'narration', 'particulars', 'details', 'transaction_description', 'transaction_remarks', 'remarks']),
             'reference' => $this->extractField($normalized, ['reference', 'ref', 'reference_number', 'ref_no', 'cheque_no', 'chq_no']),
-            'debit' => $this->extractNumericField($normalized, ['debit', 'debit_amount', 'withdrawal', 'withdrawals', 'dr']),
-            'credit' => $this->extractNumericField($normalized, ['credit', 'credit_amount', 'deposit', 'deposits', 'cr']),
-            'balance' => $this->extractNumericField($normalized, ['balance', 'closing_balance', 'running_balance', 'available_balance']),
+            'debit' => $amounts['debit'],
+            'credit' => $amounts['credit'],
+            'balance' => $this->amountParser->parseBalance(
+                $this->extractField($normalized, ['balance', 'balance_inr', 'closing_balance', 'running_balance', 'available_balance']),
+            ),
         ];
     }
 
@@ -208,29 +221,6 @@ class DocumentProcessor
         }
 
         return null;
-    }
-
-    /**
-     * Extract a numeric field, cleaning currency formatting.
-     *
-     * @param  array<string, mixed>  $row
-     * @param  array<int, string>  $possibleKeys
-     */
-    protected function extractNumericField(array $row, array $possibleKeys): ?string
-    {
-        $value = $this->extractField($row, $possibleKeys);
-
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if (is_numeric($value) && (float) $value === 0.0) {
-            return null;
-        }
-
-        $cleaned = preg_replace('/[^0-9.\-]/', '', (string) $value);
-
-        return $cleaned !== '' && $cleaned !== '0' ? $cleaned : null;
     }
 
     /**
@@ -447,9 +437,8 @@ class DocumentProcessor
         $statementPeriod = $response['statement_period'] ?? null;
         $cardVariant = $response['card_variant'] ?? null;
         $transactions = $response['transactions'];
-        $previousBalance = is_numeric($response['previous_balance'] ?? null)
-            ? (float) $response['previous_balance']
-            : null;
+        $parsedPreviousBalance = $this->amountParser->parseBalance($response['previous_balance'] ?? null);
+        $previousBalance = $parsedPreviousBalance !== null ? (float) $parsedPreviousBalance : null;
 
         if (empty($transactions)) {
             $file->update([
@@ -503,6 +492,7 @@ class DocumentProcessor
             }
 
             $imported = 0;
+            $negativeSide = $this->negativeAmountSide($file);
 
             foreach ($transactions as $row) {
                 try {
@@ -517,8 +507,13 @@ class DocumentProcessor
                     continue;
                 }
 
-                $debit = isset($row['debit']) && (float) $row['debit'] > 0 ? (string) $row['debit'] : null;
-                $credit = isset($row['credit']) && (float) $row['credit'] > 0 ? (string) $row['credit'] : null;
+                ['debit' => $debit, 'credit' => $credit] = $this->amountParser->resolve(
+                    $row['debit'] ?? null,
+                    $row['credit'] ?? null,
+                    $row['amount'] ?? null,
+                    negativeSide: $negativeSide,
+                    amountDecides: $file->statement_type === StatementType::CreditCard,
+                );
 
                 if ($debit === null && $credit === null) {
                     Log::warning('Statement transaction row has no debit or credit amount', [
@@ -536,7 +531,7 @@ class DocumentProcessor
                     'reference_number' => $row['reference'] ?? null,
                     'debit' => $debit,
                     'credit' => $credit,
-                    'balance' => isset($row['balance']) ? (string) $row['balance'] : null,
+                    'balance' => $this->amountParser->parseBalance($row['balance'] ?? null),
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,
                     'bank_format' => $bankName,
@@ -586,11 +581,23 @@ class DocumentProcessor
     }
 
     /**
+     * The side a minus-signed amount belongs to: money out on a bank account, but a
+     * payment or refund that reduces the amount owed on a credit card.
+     *
+     * @return 'debit'|'credit'
+     */
+    private function negativeAmountSide(ImportedFile $file): string
+    {
+        return $file->statement_type === StatementType::CreditCard ? AmountParser::CREDIT : AmountParser::DEBIT;
+    }
+
+    /**
      * @throws InvalidFormatException when the date cannot be parsed
      */
     private function parseTransactionDate(string $date): Carbon
     {
-        $date = trim($date);
+        // Drop a trailing time, e.g. "17/09/2026| 19:16" or "17/09/2026 07:16 PM"
+        $date = trim((string) preg_replace('/[\s|,]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?$/i', '', trim($date)));
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
         if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})$/', $date, $m)) {

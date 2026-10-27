@@ -154,13 +154,14 @@ describe('HeadMatcher agent', function () {
 });
 
 describe('StatementParser with Agent::fake()', function () {
-    it('instructs the model to handle CR and DR suffixes without minus sign rule', function () {
+    it('instructs the model to handle Cr/Dr markers and statement-type-aware minus signs', function () {
         $agent = new StatementParser;
         $instructions = (string) $agent->instructions();
 
-        expect($instructions)->toContain('CR" suffix')
-            ->and($instructions)->toContain('DR" suffix')
-            ->and($instructions)->not->toContain('minus sign');
+        expect($instructions)->toContain('"Cr", "CR" or "Cr."')
+            ->and($instructions)->toContain('"Dr", "DR" or "Dr."')
+            ->and($instructions)->toContain('on a CREDIT CARD statement → `credit`')
+            ->and($instructions)->toContain('on a BANK ACCOUNT statement → `debit`');
     });
 
     it('returns structured response mapping CR to credit and unsuffixed to debit', function () {
