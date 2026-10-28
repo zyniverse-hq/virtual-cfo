@@ -1,12 +1,15 @@
 <?php
 
 use App\Ai\Agents\HeadMatcher;
+use App\Ai\Agents\InvoiceParser;
 use App\Ai\Agents\StatementParser;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
+use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 
 describe('AI provider configuration', function () {
@@ -258,3 +261,41 @@ describe('HeadMatcher with Agent::fake()', function () {
         HeadMatcher::assertPrompted('Match these transactions.');
     });
 });
+
+describe('parser output schemas', function () {
+    it('are accepted by strict structured-output providers such as OpenAI', function (string $agent) {
+        $schema = (new ObjectSchema((new $agent)->schema(new JsonSchemaTypeFactory)))->toArray();
+
+        $objects = [];
+        array_walk_recursive_nodes($schema, function (array $node) use (&$objects) {
+            if (isset($node['properties'])) {
+                $objects[] = $node;
+            }
+        });
+
+        expect($objects)->not->toBeEmpty();
+
+        foreach ($objects as $object) {
+            expect($object['additionalProperties'] ?? null)->toBeFalse()
+                ->and($object['required'] ?? [])->toEqualCanonicalizing(array_keys($object['properties']));
+        }
+    })->with([
+        'StatementParser' => [StatementParser::class],
+        'InvoiceParser' => [InvoiceParser::class],
+    ]);
+});
+
+/**
+ * @param  array<mixed>  $node
+ * @param  callable(array<mixed>): void  $visit
+ */
+function array_walk_recursive_nodes(array $node, callable $visit): void
+{
+    $visit($node);
+
+    foreach ($node as $child) {
+        if (is_array($child)) {
+            array_walk_recursive_nodes($child, $visit);
+        }
+    }
+}

@@ -64,39 +64,44 @@ class InvoiceParser implements Agent, HasMiddleware, HasStructuredOutput
         INSTRUCTIONS;
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Strict structured-output schema: every object is closed and every field is required,
+     * with optional fields nullable (required by OpenAI models, accepted by the others).
+     *
+     * @return array<string, mixed>
+     */
     public function schema(JsonSchema $schema): array
     {
         return [
             'vendor_name' => $schema->string()->required(),
-            'vendor_gstin' => $schema->string(),
-            'buyer_name' => $schema->string(),
-            'buyer_gstin' => $schema->string(),
-            'buyer_address' => $schema->array()->items($schema->string()),
+            'vendor_gstin' => $schema->string()->nullable()->required(),
+            'buyer_name' => $schema->string()->nullable()->required(),
+            'buyer_gstin' => $schema->string()->nullable()->required(),
+            'buyer_address' => $schema->array()->items($schema->string())->nullable()->required(),
             'invoice_number' => $schema->string()->required(),
             'invoice_date' => $schema->string()->required(),
-            'due_date' => $schema->string(),
-            'place_of_supply' => $schema->string(),
-            'service_name' => $schema->string(),
-            'hsn_sac' => $schema->string(),
+            'due_date' => $schema->string()->nullable()->required(),
+            'place_of_supply' => $schema->string()->nullable()->required(),
+            'service_name' => $schema->string()->nullable()->required(),
+            'hsn_sac' => $schema->string()->nullable()->required(),
             'line_items' => $schema->array()->items($schema->object([
                 'description' => $schema->string()->required(),
-                'hsn_sac' => $schema->string(),
-                'quantity' => $schema->number(),
-                'rate' => $schema->number(),
+                'hsn_sac' => $schema->string()->nullable()->required(),
+                'quantity' => $schema->number()->nullable()->required(),
+                'rate' => $schema->number()->nullable()->required(),
                 'amount' => $schema->number()->required(),
-            ]))->required(),
+            ])->withoutAdditionalProperties())->required(),
             'base_amount' => $schema->number()->required(),
-            'cgst_rate' => $schema->number(),
-            'cgst_amount' => $schema->number(),
-            'sgst_rate' => $schema->number(),
-            'sgst_amount' => $schema->number(),
-            'igst_rate' => $schema->number(),
-            'igst_amount' => $schema->number(),
-            'tds_amount' => $schema->number(),
+            'cgst_rate' => $schema->number()->nullable()->required(),
+            'cgst_amount' => $schema->number()->nullable()->required(),
+            'sgst_rate' => $schema->number()->nullable()->required(),
+            'sgst_amount' => $schema->number()->nullable()->required(),
+            'igst_rate' => $schema->number()->nullable()->required(),
+            'igst_amount' => $schema->number()->nullable()->required(),
+            'tds_amount' => $schema->number()->nullable()->required(),
             'total_amount' => $schema->number()->required(),
             'currency' => $schema->string()->required(),
-            'amount_in_words' => $schema->string(),
+            'amount_in_words' => $schema->string()->nullable()->required(),
         ];
     }
 }

@@ -82,24 +82,30 @@ class StatementParser implements Agent, HasMiddleware, HasStructuredOutput
         INSTRUCTIONS;
     }
 
+    /**
+     * Strict structured-output schema: every object is closed and every field is required,
+     * with optional fields nullable (required by OpenAI models, accepted by the others).
+     *
+     * @return array<string, mixed>
+     */
     public function schema(JsonSchema $schema): array
     {
         return [
             'bank_name' => $schema->string()->required(),
-            'account_number' => $schema->string(),
-            'account_holder_name' => $schema->string(),
-            'statement_period' => $schema->string(),
-            'card_variant' => $schema->string(),
-            'previous_balance' => $schema->number(),
+            'account_number' => $schema->string()->nullable()->required(),
+            'account_holder_name' => $schema->string()->nullable()->required(),
+            'statement_period' => $schema->string()->nullable()->required(),
+            'card_variant' => $schema->string()->nullable()->required(),
+            'previous_balance' => $schema->number()->nullable()->required(),
             'transactions' => $schema->array()->items($schema->object([
                 'date' => $schema->string()->required(),
                 'description' => $schema->string()->required(),
-                'reference' => $schema->string(),
+                'reference' => $schema->string()->nullable()->required(),
                 'amount' => $schema->string()->required(),
-                'debit' => $schema->number(),
-                'credit' => $schema->number(),
-                'balance' => $schema->number(),
-            ]))->required(),
+                'debit' => $schema->number()->nullable()->required(),
+                'credit' => $schema->number()->nullable()->required(),
+                'balance' => $schema->number()->nullable()->required(),
+            ])->withoutAdditionalProperties())->required(),
         ];
     }
 }
