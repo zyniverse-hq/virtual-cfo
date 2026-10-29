@@ -6,10 +6,17 @@ use App\Enums\NavigationGroup;
 use App\Filament\Resources\AccountHeadResource\Pages;
 use App\Models\AccountHead;
 use App\Models\Company;
+use App\Models\HeadMapping;
+use App\Models\Transaction;
+use App\Services\AggregateService;
 use App\Services\TallyImport\TallyMasterImportService;
 use BackedEnum;
 use Closure;
 use Filament\Actions;
+use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\ForceDeleteAction;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -22,9 +29,12 @@ use Filament\Tables;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Unique;
+use Illuminate\Validation\ValidationException;
 use UnitEnum;
 
 class AccountHeadResource extends Resource
@@ -135,14 +145,20 @@ class AccountHeadResource extends Resource
             ])
             ->actions([
                 Actions\EditAction::make(),
-                Actions\DeleteAction::make(),
-                Actions\ForceDeleteAction::make(),
+                self::customizeDeleteAction(DeleteAction::make()),
+                self::customizeDeleteAction(ForceDeleteAction::make(), true),
                 Actions\RestoreAction::make(),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
-                    Actions\ForceDeleteBulkAction::make(),
+                    Actions\DeleteBulkAction::make()
+                        ->before(function (Collection $records, Actions\DeleteBulkAction $action) {
+                            self::validateBulkDeletion($records, $action);
+                        }),
+                    Actions\ForceDeleteBulkAction::make()
+                        ->before(function (Collection $records, Actions\ForceDeleteBulkAction $action) {
+                            self::validateBulkDeletion($records, $action);
+                        }),
                     Actions\RestoreBulkAction::make(),
                 ]),
             ])
@@ -184,7 +200,7 @@ class AccountHeadResource extends Resource
     }
 
     /**
-     * @return array<Actions\Action|Component>
+     * @return array<Action|Component>
      */
     private static function tallyImportForm(): array
     {
@@ -237,12 +253,211 @@ class AccountHeadResource extends Resource
         };
     }
 
-    private static function makeTallyImportAction(string $name): Actions\Action
+    private static function makeTallyImportAction(string $name): Action
     {
-        return Actions\Action::make($name)
+        return Action::make($name)
             ->label('Import from Tally XML')
             ->icon('heroicon-o-arrow-up-tray')
             ->form(self::tallyImportForm())
             ->action(self::tallyImportAction());
+    }
+
+    public static function customizeDeleteAction(DeleteAction|ForceDeleteAction $action, bool $force = false): DeleteAction|ForceDeleteAction
+    {
+        return $action
+            ->form(function (AccountHead $record) {
+                $count = $record->getLinkedRecordsCount();
+                if ($count === 0) {
+                    return [];
+                }
+
+                return [
+                    Forms\Components\Placeholder::make('warning')
+                        ->label('')
+                        ->content(str($record->getDeletionErrorMessage())->replace('Cannot delete — ', '')->toString())
+                        ->extraAttributes(['class' => 'text-danger-600 font-semibold']),
+
+                    Forms\Components\Radio::make('reassign_choice')
+                        ->label('How would you like to handle them?')
+                        ->options([
+                            'bulk' => 'Reassign all linked records to another Account Head',
+                            'manual' => 'Review and reassign them manually',
+                        ])
+                        ->live()
+                        ->required(),
+
+                    Forms\Components\Select::make('replacement_head_id')
+                        ->label('New Account Head')
+                        ->options(fn () => AccountHead::query()
+                            ->where('company_id', Filament::getTenant()?->getKey())
+                            ->where('id', '!=', $record->id)
+                            ->pluck('name', 'id')
+                        )
+                        ->searchable()
+                        ->required(fn (Get $get) => $get('reassign_choice') === 'bulk')
+                        ->visible(fn (Get $get) => $get('reassign_choice') === 'bulk'),
+                ];
+            })
+            ->action(function (AccountHead $record, array $data, DeleteAction|ForceDeleteAction $action) use ($force) {
+                if (isset($data['reassign_choice'])) {
+                    if ($data['reassign_choice'] === 'manual') {
+                        $hasTransactions = $record->transactions()->exists();
+                        $hasRules = $record->headMappings()->exists();
+
+                        if ($hasRules && ! $hasTransactions) {
+                            $url = HeadMappingResource::getUrl('index', [
+                                'tableFilters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                                'filters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                            ]);
+                        } else {
+                            $url = TransactionResource::getUrl('index', [
+                                'tableFilters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                                'filters' => [
+                                    'account_head_id' => ['value' => (string) $record->id],
+                                ],
+                            ]);
+                        }
+                        $action->getLivewire()->redirect($url);
+                        $action->halt();
+
+                        return;
+                    }
+                }
+
+                try {
+                    DB::beginTransaction();
+
+                    if (isset($data['reassign_choice']) && $data['reassign_choice'] === 'bulk') {
+                        $replacementId = $data['replacement_head_id'];
+
+                        $replacementHead = AccountHead::query()
+                            ->where('company_id', Filament::getTenant()?->getKey())
+                            ->where('id', '!=', $record->id)
+                            ->find($replacementId);
+
+                        if (! $replacementHead) {
+                            throw ValidationException::withMessages([
+                                'replacement_head_id' => 'Invalid replacement account head selected.',
+                            ]);
+                        }
+
+                        // Collected before the update, while the rows still point at this head.
+                        $yearMonths = $record->transactions()
+                            ->distinct()
+                            ->selectRaw("TO_CHAR(date, 'YYYY-MM') AS year_month")
+                            ->pluck('year_month');
+
+                        // Mass updates bypass model events, so neither TransactionObserver nor any
+                        // HeadMapping observer runs. HeadMapping has none; transaction aggregates
+                        // are rebuilt explicitly below for each affected month, which also clears
+                        // the zero-count rows an incremental adjustment would leave behind.
+                        $record->transactions()->update(['account_head_id' => $replacementId]);
+                        $record->headMappings()->update(['account_head_id' => $replacementId]);
+
+                        $aggregateService = app(AggregateService::class);
+                        foreach ($yearMonths as $yearMonth) {
+                            $aggregateService->rebuild((int) $record->company_id, (string) $yearMonth);
+                        }
+                    }
+
+                    $result = $action->process(static fn (AccountHead $record) => $force ? $record->forceDelete() : $record->delete());
+
+                    if (! $result) {
+                        DB::rollBack();
+                        $action->failure();
+
+                        return;
+                    }
+
+                    DB::commit();
+                    $action->success();
+                } catch (ValidationException $e) {
+                    DB::rollBack();
+
+                    $message = collect($e->errors())->flatten()->first() ?: $e->getMessage();
+                    Notification::make()
+                        ->danger()
+                        ->title($message)
+                        ->send();
+
+                    $action->failure();
+                } catch (\Throwable $e) {
+                    DB::rollBack();
+                    throw $e;
+                }
+            });
+    }
+
+    /**
+     * @param  Collection<int, AccountHead>  $records
+     */
+    public static function validateBulkDeletion(Collection $records, BulkAction $action): void
+    {
+        $transactionCounts = Transaction::whereIn('account_head_id', $records->pluck('id'))
+            ->selectRaw('account_head_id, count(*) as count')
+            ->groupBy('account_head_id')
+            ->pluck('count', 'account_head_id');
+
+        $ruleCounts = HeadMapping::whereIn('account_head_id', $records->pluck('id'))
+            ->selectRaw('account_head_id, count(*) as count')
+            ->groupBy('account_head_id')
+            ->pluck('count', 'account_head_id');
+
+        $blocked = [];
+
+        foreach ($records as $record) {
+            /** @var AccountHead $record */
+            $tCount = (int) $transactionCounts->get($record->id, 0);
+            $rCount = (int) $ruleCounts->get($record->id, 0);
+
+            if ($tCount + $rCount === 0) {
+                continue;
+            }
+
+            $blocked[] = ['name' => $record->name, 'transactions' => $tCount, 'rules' => $rCount];
+        }
+
+        if ($blocked === []) {
+            return;
+        }
+
+        Notification::make()
+            ->danger()
+            ->title(self::bulkDeletionErrorMessage($blocked))
+            ->send();
+
+        $action->cancel();
+    }
+
+    /**
+     * @param  non-empty-list<array{name: string, transactions: int, rules: int}>  $blocked
+     */
+    private static function bulkDeletionErrorMessage(array $blocked): string
+    {
+        if (count($blocked) === 1) {
+            $only = $blocked[0];
+            $label = AccountHead::describeLinkedRecords($only['transactions'], $only['rules']);
+            $totalCount = $only['transactions'] + $only['rules'];
+            $verb = $totalCount === 1 ? 'is' : 'are';
+            $pronoun = $totalCount === 1 ? 'it' : 'them';
+
+            return "Cannot bulk delete — '{$only['name']}' because {$label} {$verb} mapped to it. Reassign {$pronoun} first.";
+        }
+
+        $described = array_map(
+            fn (array $entry): string => "'{$entry['name']}' (".AccountHead::describeLinkedRecords($entry['transactions'], $entry['rules']).')',
+            $blocked,
+        );
+
+        $last = array_pop($described);
+        $list = implode(', ', $described)." and {$last}";
+
+        return "Cannot bulk delete — {$list} have mapped records. Reassign them first.";
     }
 }
