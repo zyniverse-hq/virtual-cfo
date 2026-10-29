@@ -35,7 +35,7 @@ return [
 
     'models' => [
 
-        'parsing' => env('AI_PARSING_MODEL', 'mistralai/mistral-large-2512'),
+        'parsing' => env('AI_PARSING_MODEL', 'openai/gpt-6-luna'),
 
         'matching' => env('AI_MATCHING_MODEL', 'mistralai/mistral-large-2512'),
 
