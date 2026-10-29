@@ -1657,8 +1657,101 @@ describe('DocumentProcessor', function () {
                 ->and($transactions['BOBS BAR']->debit)->toBe('2274.00')
                 ->and($transactions['PLACEHOLDER CREDIT']->debit)->toBe('544.00')
                 ->and($transactions['PLACEHOLDER CREDIT']->credit)->toBeNull()
-                ->and($transactions['CHARGE PUT IN CREDIT']->debit)->toBe('1950.00')
-                ->and($transactions['CHARGE PUT IN CREDIT']->credit)->toBeNull();
+                ->and($transactions['CHARGE PUT IN CREDIT']->credit)->toBe('1950')
+                ->and($transactions['CHARGE PUT IN CREDIT']->debit)->toBeNull();
+        });
+
+        it('trusts the credit column for an unsigned card payment', function () {
+            Storage::put('statements/cc_payment.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Sep 2026',
+                    'previous_balance' => '12,000.00 Dr',
+                    'transactions' => [
+                        ['date' => '17/09/2026', 'description' => 'PAYMENT RECEIVED', 'amount' => '24,060.00', 'credit' => 24060],
+                        ['date' => '18/09/2026', 'description' => 'SHOP', 'amount' => '(500.00)', 'debit' => 500],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_payment.pdf',
+                'original_filename' => 'hdfc_cc_payment.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transactions = Transaction::where('imported_file_id', $file->id)->get()->keyBy('description');
+
+            expect($transactions['PAYMENT RECEIVED']->credit)->toBe('24060')
+                ->and($transactions['PAYMENT RECEIVED']->debit)->toBeNull()
+                ->and($transactions['SHOP']->debit)->toBe('500')
+                ->and((float) $file->refresh()->opening_balance)->toBe(12000.0)
+                ->and($transactions['Previous Balance']->debit)->toBe('12000');
+        });
+
+        it('keeps a bank refund in the credit column when the amount is bracketed', function () {
+            Storage::put('statements/bank_refund.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'May 2026',
+                    'previous_balance' => '12,000.00 Dr',
+                    'transactions' => [
+                        ['date' => '01/05/2026', 'description' => 'REFUND', 'credit' => 500, 'amount' => '(500.00)'],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->create([
+                'file_path' => 'statements/bank_refund.pdf',
+                'original_filename' => 'bank_refund.pdf',
+                'statement_type' => StatementType::Bank,
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $transaction = Transaction::where('imported_file_id', $file->id)->firstOrFail();
+
+            expect($transaction->credit)->toBe('500')
+                ->and($transaction->debit)->toBeNull()
+                ->and((float) $file->refresh()->opening_balance)->toBe(-12000.0);
+        });
+
+        it('keeps the date of a time-only suffix that follows a day without a year', function () {
+            Storage::put('statements/cc_dates.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC Bank',
+                    'statement_period' => 'Apr 2026',
+                    'transactions' => [
+                        ['date' => 'Apr 5, 2026, 12:30', 'description' => 'WITH YEAR', 'debit' => 10],
+                        ['date' => 'Apr 5, 12:30', 'description' => 'NO YEAR', 'debit' => 20],
+                    ],
+                ],
+            ]);
+
+            $file = ImportedFile::factory()->creditCard()->create([
+                'file_path' => 'statements/cc_dates.pdf',
+                'original_filename' => 'cc_dates.pdf',
+                'status' => ImportStatus::Pending,
+            ]);
+
+            $this->processor->process($file);
+
+            $dates = Transaction::where('imported_file_id', $file->id)->get()
+                ->mapWithKeys(fn (Transaction $t) => [$t->description => $t->date->toDateString()]);
+
+            expect($dates->all())->toBe([
+                'WITH YEAR' => '2026-04-05',
+                'NO YEAR' => now()->year.'-04-05',
+            ]);
         });
 
         it('reads transaction dates that include a time', function () {

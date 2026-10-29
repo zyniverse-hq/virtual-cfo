@@ -170,6 +170,7 @@ class DocumentProcessor
             'credit' => $amounts['credit'],
             'balance' => $this->amountParser->parseBalance(
                 $this->extractField($normalized, ['balance', 'balance_inr', 'closing_balance', 'running_balance', 'available_balance']),
+                $negativeSide,
             ),
         ];
     }
@@ -437,7 +438,10 @@ class DocumentProcessor
         $statementPeriod = $response['statement_period'] ?? null;
         $cardVariant = $response['card_variant'] ?? null;
         $transactions = $response['transactions'];
-        $parsedPreviousBalance = $this->amountParser->parseBalance($response['previous_balance'] ?? null);
+        $parsedPreviousBalance = $this->amountParser->parseBalance(
+            $response['previous_balance'] ?? null,
+            $this->negativeAmountSide($file),
+        );
         $previousBalance = $parsedPreviousBalance !== null ? (float) $parsedPreviousBalance : null;
 
         if (empty($transactions)) {
@@ -512,7 +516,6 @@ class DocumentProcessor
                     $row['credit'] ?? null,
                     $row['amount'] ?? null,
                     negativeSide: $negativeSide,
-                    amountDecides: $file->statement_type === StatementType::CreditCard,
                 );
 
                 if ($debit === null && $credit === null) {
@@ -531,7 +534,7 @@ class DocumentProcessor
                     'reference_number' => $row['reference'] ?? null,
                     'debit' => $debit,
                     'credit' => $credit,
-                    'balance' => $this->amountParser->parseBalance($row['balance'] ?? null),
+                    'balance' => $this->amountParser->parseBalance($row['balance'] ?? null, $negativeSide),
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,
                     'bank_format' => $bankName,
@@ -592,13 +595,19 @@ class DocumentProcessor
     }
 
     /**
-     * A trailing time is dropped first, e.g. "17/09/2026| 19:16" or "17/09/2026 07:16 PM".
+     * A trailing time is dropped first, e.g. "17/09/2026| 19:16" or "17/09/2026 07:16 PM",
+     * but only after a date that already carries its year, so a time is never mistaken
+     * for part of a yearless date such as "Apr 5, 12:30".
      *
      * @throws InvalidFormatException when the date cannot be parsed
      */
     private function parseTransactionDate(string $date): Carbon
     {
-        $date = trim((string) preg_replace('/[\s|,]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?$/i', '', trim($date)));
+        $date = trim($date);
+
+        if (preg_match('/^(.*(?:\d{4}|\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2}))[\s|,]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?$/i', $date, $m)) {
+            $date = trim($m[1]);
+        }
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
         if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})$/', $date, $m)) {

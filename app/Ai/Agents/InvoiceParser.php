@@ -37,7 +37,7 @@ class InvoiceParser implements Agent, HasMiddleware, HasStructuredOutput
      */
     public function model(): string
     {
-        return config('ai.models.parsing', 'mistralai/mistral-large-latest');
+        return config('ai.models.parsing', 'openai/gpt-6-luna');
     }
 
     public function instructions(): Stringable|string

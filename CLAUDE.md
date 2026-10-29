@@ -142,7 +142,7 @@ Using an LLM (via OpenRouter) to parse bank statements instead of smalot/pdfpars
 - Regex-based parsing requires per-bank parser maintenance
 - LLM handles any format — detects columns, extracts structured data
 - Works for both text-based and scanned PDFs
-- Cost: low per page with `openai/gpt-6-luna` (about 10x cheaper than Gemini Flash in our tests)
+- Cost: per-page cost depends on the configured parsing model
 
 ### Head Matching: Hybrid (rules + LLM)
 Two-pass approach:
