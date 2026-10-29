@@ -698,6 +698,33 @@ describe('DocumentProcessor', function () {
                 ->and($bankAccount->account_number)->toBe('9876543210');
         });
 
+        it('saves the company currency on credit card statement transactions', function () {
+            Storage::put('statements/cc_currency.pdf', 'fake-pdf-content');
+
+            StatementParser::fake([
+                [
+                    'bank_name' => 'HDFC CC',
+                    'account_number' => '4111111111111234',
+                    'transactions' => [
+                        ['date' => '2024-01-05', 'description' => 'AMAZON', 'debit' => 2000, 'balance' => 2000],
+                    ],
+                ],
+            ]);
+
+            $company = Company::factory()->create(['currency' => 'GBP']);
+            $file = ImportedFile::factory()->creditCard()->for($company)->create([
+                'file_path' => 'statements/cc_currency.pdf',
+                'original_filename' => 'cc_currency.pdf',
+                'status' => ImportStatus::Pending,
+                'credit_card_id' => null,
+            ]);
+
+            $this->processor->process($file);
+
+            $transaction = Transaction::where('imported_file_id', $file->id)->first();
+            expect($transaction->currency)->toBe('GBP');
+        });
+
         it('populates card_number on auto-created CreditCard from parser', function () {
             Storage::put('statements/new_cc.pdf', 'fake-pdf-content');
 

@@ -96,8 +96,9 @@ class DocumentProcessor
         }
 
         $imported = 0;
+        $currency = Transaction::currencyForCompany($file->company_id);
 
-        DB::transaction(function () use ($file, $rows, &$imported) {
+        DB::transaction(function () use ($file, $rows, $currency, &$imported) {
             foreach ($rows as $row) {
                 $normalized = $this->normalizeStructuredRow($row);
 
@@ -119,7 +120,7 @@ class DocumentProcessor
                     'debit' => $normalized['debit'],
                     'credit' => $normalized['credit'],
                     'balance' => $normalized['balance'],
-                    'currency' => $file->company?->currency ?? 'INR',
+                    'currency' => $currency,
                     'mapping_type' => MappingType::Unmapped,
                     'raw_data' => $row,
                     'bank_format' => $file->bank_name,
@@ -462,7 +463,7 @@ class DocumentProcessor
         }
 
         DB::transaction(function () use ($file, $bankName, $accountNumber, $accountHolderName, $statementPeriod, $cardVariant, $transactions, $previousBalance) {
-            $currency = $file->company?->currency ?? 'INR';
+            $currency = Transaction::currencyForCompany($file->company_id);
 
             $fileUpdates = [
                 'status' => ImportStatus::Completed,
@@ -795,8 +796,7 @@ class DocumentProcessor
         $invoiceDate = $response['invoice_date'] ?? null;
         $totalAmount = $response['total_amount'] ?? null;
 
-        $file->loadMissing('company');
-        $currency = $response['currency'] ?? $file->company?->currency ?? 'INR';
+        $currency = $response['currency'] ?? Transaction::currencyForCompany($file->company_id);
 
         /** @var StructuredAgentResponse $response */
         $rawData = $response->toArray();
