@@ -20,7 +20,7 @@ Upload → Parse → Reconcile → Export
 | Backend | PHP 8.4, Laravel 12 |
 | Admin Panel | Filament v5 |
 | Database | PostgreSQL (JSONB for flexible schemas) |
-| AI/LLM | Laravel AI SDK with OpenRouter (Mistral, DeepSeek) |
+| AI/LLM | Laravel AI SDK with OpenRouter (OpenAI Luna for parsing, Gemini Flash-Lite for matching) |
 | Testing | Pest 4, Larastan (PHPStan level 6) |
 | PDF Reports | Barryvdh DomPDF |
 | Audit Trail | Spatie Activity Log |

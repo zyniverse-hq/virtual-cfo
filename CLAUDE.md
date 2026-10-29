@@ -111,7 +111,7 @@ Virtual CFO application for automating bank/credit card statement processing, ac
 - PHP 8.4 + Laravel 12
 - Filament v5 (admin panel)
 - PostgreSQL (single database, JSONB for flexible schemas)
-- Laravel AI SDK (`laravel/ai`) with Mistral as primary LLM provider
+- Laravel AI SDK (`laravel/ai`) with OpenRouter as the LLM provider (parsing: `openai/gpt-6-luna`, matching: `google/gemini-3.1-flash-lite`)
 - Laravel Boost + Filament Blueprint
 - Pest 4 (testing) + Larastan (static analysis)
 - Database queue driver (`php artisan queue:work`)
@@ -137,12 +137,12 @@ Chose `laravel/ai` over `prism-php/prism` because:
 - Prism PHP is community-maintained with less integrated features
 
 ### PDF Parsing: LLM-powered (not regex/pdfparser)
-Using Mistral LLM to parse bank statements instead of smalot/pdfparser because:
+Using an LLM (via OpenRouter) to parse bank statements instead of smalot/pdfparser because:
 - Bank statements have wildly different layouts per bank
 - Regex-based parsing requires per-bank parser maintenance
 - LLM handles any format — detects columns, extracts structured data
 - Works for both text-based and scanned PDFs
-- Cost: ~$2/1000 pages via Mistral
+- Cost: low per page with `openai/gpt-6-luna` (about 10x cheaper than Gemini Flash in our tests)
 
 ### Head Matching: Hybrid (rules + LLM)
 Two-pass approach:
@@ -221,8 +221,8 @@ See [AI Agent Design](docs/architecture/ai-agent-design.md) for architecture rat
 
 | Agent | Env Var | Config Key | Default |
 |-------|---------|------------|---------|
-| `StatementParser` | `AI_PARSING_MODEL` | `ai.models.parsing` | `mistral-large-latest` |
-| `HeadMatcher` | `AI_MATCHING_MODEL` | `ai.models.matching` | `mistral-large-latest` |
+| `StatementParser` | `AI_PARSING_MODEL` | `ai.models.parsing` | `openai/gpt-6-luna` |
+| `HeadMatcher` | `AI_MATCHING_MODEL` | `ai.models.matching` | `google/gemini-3.1-flash-lite` |
 
 The agents use the `model()` method (laravel/ai convention) to resolve the model at runtime, allowing model changes without code modifications.
 
@@ -269,7 +269,7 @@ The full pipeline is documented in `docs/architecture/`:
 ## Development Notes
 - Very few users (small accounts team)
 - Tally XML reference file: `DayBook zysk april25.xml` (April 2025, UTF-16LE, 383 vouchers)
-- OCR support via Mistral handles scanned PDFs automatically
+- Scanned PDFs are read natively by the parsing model (no separate OCR service)
 
 ===
 
