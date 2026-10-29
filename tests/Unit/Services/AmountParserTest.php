@@ -129,6 +129,11 @@ describe('AmountParser::resolve()', function () {
             ->and($this->parser->resolve(100, 200, '300.00'))->toBe(['debit' => '100', 'credit' => '200']);
     });
 
+    it('drops a negative placeholder in the unused column when no single amount is present', function () {
+        expect($this->parser->resolve(544, -1))->toBe(['debit' => '544', 'credit' => null])
+            ->and($this->parser->resolve('-1', '24,060.00'))->toBe(['debit' => null, 'credit' => '24060.00']);
+    });
+
     it('prefers debit and credit columns over a different single amount', function () {
         expect($this->parser->resolve('300.00', null, '+999.00'))->toBe(['debit' => '300.00', 'credit' => null]);
     });
@@ -149,6 +154,8 @@ describe('AmountParser::parseBalance()', function () {
         'minus sign' => ['-5,000.00', '-5000.00'],
         'brackets' => ['(5,000.00)', '-5000.00'],
         'Cr suffix is stripped' => ['5,000.00 Cr', '5000.00'],
+        'Dr suffix is negative' => ['12,000.00 Dr', '-12000.00'],
+        'Dr prefix is negative' => ['DR 12,000.00', '-12000.00'],
         'zero is kept' => ['0.00', '0.00'],
         'missing' => [null, null],
         'placeholder' => ['-', null],

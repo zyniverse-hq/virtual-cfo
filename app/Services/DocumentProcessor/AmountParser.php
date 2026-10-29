@@ -86,9 +86,8 @@ class AmountParser
             ? []
             : array_filter(array_map($this->parseNonZero(...), [self::DEBIT => $debit, self::CREDIT => $credit]));
 
-        // Both columns filled (e.g. a parser's "-1" placeholder in the unused one): keep the one matching the amount.
-        if (count($columns) === 2 && $single !== null) {
-            $columns = array_filter($columns, fn (array $parsed): bool => (float) $parsed['amount'] === (float) $single['amount']) ?: $columns;
+        if (count($columns) === 2) {
+            $columns = $this->dropPlaceholderColumn($columns, $single);
         }
 
         if (count($columns) === 2) {
@@ -113,7 +112,7 @@ class AmountParser
     }
 
     /**
-     * Parse a running balance, keeping it negative only when written with a minus sign or brackets.
+     * Parse a running balance, keeping it negative when written with a minus sign, brackets or a Dr marker.
      */
     public function parseBalance(mixed $value): ?string
     {
@@ -123,7 +122,32 @@ class AmountParser
             return null;
         }
 
-        return $parsed['sign'] === '-' ? "-{$parsed['amount']}" : $parsed['amount'];
+        $isNegative = $parsed['sign'] === '-' || ($parsed['sign'] === null && $parsed['marker'] === self::DEBIT);
+
+        return $isNegative ? "-{$parsed['amount']}" : $parsed['amount'];
+    }
+
+    /**
+     * With both columns filled, one is a placeholder such as "-1": keep the column that
+     * matches the single amount, otherwise the one that is not negative.
+     *
+     * @param  array<string, ParsedAmount>  $columns
+     * @param  ParsedAmount|null  $single
+     * @return array<string, ParsedAmount>
+     */
+    private function dropPlaceholderColumn(array $columns, ?array $single): array
+    {
+        $matching = $single !== null
+            ? array_filter($columns, fn (array $parsed): bool => (float) $parsed['amount'] === (float) $single['amount'])
+            : [];
+
+        if (count($matching) === 1) {
+            return $matching;
+        }
+
+        $notNegative = array_filter($columns, fn (array $parsed): bool => $parsed['sign'] !== '-');
+
+        return count($notNegative) === 1 ? $notNegative : $columns;
     }
 
     /**

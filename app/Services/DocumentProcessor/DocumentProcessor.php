@@ -592,11 +592,12 @@ class DocumentProcessor
     }
 
     /**
+     * A trailing time is dropped first, e.g. "17/09/2026| 19:16" or "17/09/2026 07:16 PM".
+     *
      * @throws InvalidFormatException when the date cannot be parsed
      */
     private function parseTransactionDate(string $date): Carbon
     {
-        // Drop a trailing time, e.g. "17/09/2026| 19:16" or "17/09/2026 07:16 PM"
         $date = trim((string) preg_replace('/[\s|,]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?$/i', '', trim($date)));
 
         // D/M/YYYY, DD/MM/YYYY, or DD-MM-YYYY (Indian format — must check before Carbon::parse which defaults to MM/DD)
