@@ -37,7 +37,7 @@ return [
 
         'parsing' => env('AI_PARSING_MODEL', 'openai/gpt-6-luna'),
 
-        'matching' => env('AI_MATCHING_MODEL', 'mistralai/mistral-large-2512'),
+        'matching' => env('AI_MATCHING_MODEL', 'google/gemini-3.1-flash-lite'),
 
     ],
 

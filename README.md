@@ -93,7 +93,7 @@ php artisan make:filament-user
 | `QUEUE_CONNECTION` | Queue backend | `database` |
 | `OPENROUTER_API_KEY` | OpenRouter API key for AI features | — |
 | `AI_PARSING_MODEL` | Model for statement parsing (must read PDFs natively) | `openai/gpt-6-luna` |
-| `AI_MATCHING_MODEL` | Model for head matching | `mistralai/mistral-large-latest` |
+| `AI_MATCHING_MODEL` | Model for head matching | `google/gemini-3.1-flash-lite` |
 | `MAIL_MAILER` | Mail transport | `mailgun` |
 | `MAILGUN_DOMAIN` | Mailgun sending domain | — |
 | `MAILGUN_SECRET` | Mailgun API key | — |
