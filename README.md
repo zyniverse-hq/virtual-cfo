@@ -20,7 +20,7 @@ Upload → Parse → Reconcile → Export
 | Backend | PHP 8.4, Laravel 12 |
 | Admin Panel | Filament v5 |
 | Database | PostgreSQL (JSONB for flexible schemas) |
-| AI/LLM | Laravel AI SDK with OpenRouter (Mistral, DeepSeek) |
+| AI/LLM | Laravel AI SDK with OpenRouter (OpenAI Luna for parsing, Gemini Flash-Lite for matching) |
 | Testing | Pest 4, Larastan (PHPStan level 6) |
 | PDF Reports | Barryvdh DomPDF |
 | Audit Trail | Spatie Activity Log |
@@ -92,8 +92,8 @@ php artisan make:filament-user
 | `DB_DATABASE` | Database name | `virtual_cfo` |
 | `QUEUE_CONNECTION` | Queue backend | `database` |
 | `OPENROUTER_API_KEY` | OpenRouter API key for AI features | — |
-| `AI_PARSING_MODEL` | Model for statement parsing | `deepseek/deepseek-v3.2` |
-| `AI_MATCHING_MODEL` | Model for head matching | `mistralai/mistral-large-latest` |
+| `AI_PARSING_MODEL` | Model for statement parsing (must read PDFs natively) | `openai/gpt-6-luna` |
+| `AI_MATCHING_MODEL` | Model for head matching | `google/gemini-3.1-flash-lite` |
 | `MAIL_MAILER` | Mail transport | `mailgun` |
 | `MAILGUN_DOMAIN` | Mailgun sending domain | — |
 | `MAILGUN_SECRET` | Mailgun API key | — |

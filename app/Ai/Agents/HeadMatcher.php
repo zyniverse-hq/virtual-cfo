@@ -39,7 +39,7 @@ class HeadMatcher implements Agent, HasMiddleware, HasStructuredOutput
      */
     public function model(): string
     {
-        return config('ai.models.matching', 'mistralai/mistral-large-latest');
+        return config('ai.models.matching', 'google/gemini-3.1-flash-lite');
     }
 
     /**
