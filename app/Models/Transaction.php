@@ -23,6 +23,8 @@ class Transaction extends Model
     use LogsActivity;
     use SoftDeletes;
 
+    public const DEFAULT_CURRENCY = 'INR';
+
     protected $fillable = [
         'company_id',
         'imported_file_id',
@@ -43,6 +45,25 @@ class Transaction extends Model
         'duplicate_of_id',
         'is_synthetic',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Transaction $transaction) {
+            $transaction->currency ??= static::currencyForCompany($transaction->company_id);
+        });
+    }
+
+    /**
+     * Resolve the currency of a company, falling back to the default when it cannot be found.
+     */
+    public static function currencyForCompany(?int $companyId): string
+    {
+        if ($companyId === null) {
+            return self::DEFAULT_CURRENCY;
+        }
+
+        return Company::query()->whereKey($companyId)->value('currency') ?? self::DEFAULT_CURRENCY;
+    }
 
     public function getActivitylogOptions(): LogOptions
     {
@@ -213,6 +234,7 @@ class Transaction extends Model
     {
         $this->update([
             'company_id' => $target->id,
+            'currency' => $this->currency ?? $target->currency,
             'account_head_id' => null,
             'mapping_type' => MappingType::Unmapped,
             'ai_confidence' => null,

@@ -24,6 +24,7 @@ class TransactionFactory extends Factory
         return [
             'company_id' => Company::factory(),
             'imported_file_id' => ImportedFile::factory(),
+            'currency' => 'INR',
             'date' => fake()->dateTimeBetween('-1 year', 'now'),
             'description' => fake()->randomElement([
                 'NEFT-'.fake()->numerify('######').'-'.fake()->company(),
